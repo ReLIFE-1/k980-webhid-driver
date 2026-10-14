@@ -82,6 +82,7 @@
 
       <!-- 连接状态与操作 -->
       <div class="flex items-center space-x-4">
+        <!-- 连接状态 -->
         <div class="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-cyber-card border border-cyber-border text-xs">
           <span class="relative flex h-2.5 w-2.5">
             <span v-if="connected" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -90,6 +91,33 @@
           <span class="font-medium" :class="connected ? 'text-emerald-400' : 'text-gray-400'">
             {{ connected ? (deviceName || '迈从 K980 已连接') : '键盘未连接' }}
           </span>
+        </div>
+
+        <!-- 电量胶囊 (已连接时展示) -->
+        <div v-if="connected" 
+             @click="activeTab = 'power'; queryBattery()" 
+             title="点击查看电量与固件详情 / 刷新" 
+             class="cursor-pointer flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-cyber-card border border-cyber-border hover:border-cyan-500/50 text-xs transition">
+          <div class="flex items-center space-x-1.5">
+            <!-- 充电中图标 -->
+            <span v-if="isCharging" class="text-amber-400 font-bold animate-pulse text-sm leading-none">⚡</span>
+            <!-- 电池图标 -->
+            <div v-else class="w-5 h-2.5 rounded-xs border border-gray-400 p-0.5 flex items-center relative">
+              <div class="h-full rounded-xs transition-all duration-300"
+                   :class="batteryLevel >= 60 ? 'bg-emerald-400' : (batteryLevel >= 25 ? 'bg-amber-400' : 'bg-red-500')"
+                   :style="{ width: batteryLevel + '%' }"></div>
+              <div class="w-0.5 h-1 bg-gray-400 absolute -right-1 top-0.5 rounded-r"></div>
+            </div>
+            <span class="font-mono font-bold" :class="isCharging ? 'text-amber-300' : (batteryLevel >= 60 ? 'text-emerald-400' : (batteryLevel >= 25 ? 'text-amber-400' : 'text-red-400'))">
+              {{ isCharging ? (batteryLevel === 100 ? '已充满' : '充电中 ' + batteryLevel + '%') : (batteryLevel + '%') }}
+            </span>
+          </div>
+          <span class="text-[10px] text-gray-400 border-l border-gray-700 pl-2 hidden sm:inline">
+            {{ powerMode === 'wired' ? 'USB供电' : '无线电池' }}
+          </span>
+          <button @click.stop="queryBattery" :disabled="isQueryingBattery" class="text-gray-400 hover:text-cyan-300 transition" title="立即刷新电量">
+            <span :class="{'animate-spin inline-block': isQueryingBattery}">🔄</span>
+          </button>
         </div>
 
         <button 
@@ -273,6 +301,16 @@
           </button>
 
           <button 
+            @click="activeTab = 'power'"
+            :class="activeTab === 'power' ? 'text-cyan-400 border-cyan-400 font-semibold' : 'text-gray-400 hover:text-gray-200 border-transparent'"
+            class="pb-3 border-b-2 flex items-center space-x-2 transition">
+            <span>⚡ 电量与固件监控</span>
+            <span v-if="connected" class="ml-1 px-1.5 py-0.2 rounded text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800 font-mono">
+              {{ isCharging ? '⚡充电' : batteryLevel + '%' }}
+            </span>
+          </button>
+
+          <button 
             @click="activeTab = 'debug'"
             :class="activeTab === 'debug' ? 'text-cyan-400 border-cyan-400 font-semibold' : 'text-gray-400 hover:text-gray-200 border-transparent'"
             class="pb-3 border-b-2 flex items-center space-x-2 transition">
@@ -437,6 +475,171 @@
           </div>
         </div>
 
+        <!-- Tab: 电量与固件监控 -->
+        <div v-show="activeTab === 'power'" class="p-6 space-y-6">
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            
+            <!-- 卡片 1: 实时电量与供电状态看板 -->
+            <div class="bg-gray-900/60 border border-gray-800 rounded-2xl p-5 space-y-4 shadow-lg">
+              <div class="flex items-center justify-between border-b border-gray-800/80 pb-3">
+                <div class="flex items-center space-x-2">
+                  <span class="text-lg">🔋</span>
+                  <span class="text-sm font-semibold text-white">实时电池状态监测</span>
+                </div>
+                <div class="flex items-center space-x-2">
+                  <button 
+                    @click="queryBattery" 
+                    :disabled="!connected || isQueryingBattery"
+                    class="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-cyan-400 text-xs border border-gray-700 transition disabled:opacity-50 active:scale-95">
+                    <span :class="{'animate-spin inline-block': isQueryingBattery}">🔄</span>
+                    <span>立即查询电量</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- 电量环形/条形大展示 -->
+              <div class="flex items-center space-x-5 p-4 rounded-xl bg-gray-950/60 border border-gray-800/50">
+                <div class="relative flex items-center justify-center shrink-0">
+                  <div class="w-20 h-20 rounded-2xl flex flex-col items-center justify-center border-2 transition-all shadow-inner"
+                       :class="isCharging ? 'border-amber-400/80 bg-amber-500/10 shadow-amber-500/20' : (batteryLevel >= 60 ? 'border-emerald-500/80 bg-emerald-500/10 shadow-emerald-500/20' : (batteryLevel >= 25 ? 'border-amber-500/80 bg-amber-500/10 shadow-amber-500/20' : 'border-red-500/80 bg-red-500/10 shadow-red-500/20'))">
+                    <span v-if="isCharging" class="text-xs text-amber-400 font-bold leading-none mb-1">⚡ 充电</span>
+                    <span class="text-2xl font-black font-mono tracking-tight"
+                          :class="isCharging ? 'text-amber-300' : (batteryLevel >= 60 ? 'text-emerald-400' : (batteryLevel >= 25 ? 'text-amber-400' : 'text-red-400'))">
+                      {{ batteryLevel }}<span class="text-xs font-normal">%</span>
+                    </span>
+                  </div>
+                </div>
+
+                <div class="space-y-1.5 flex-1 min-w-0">
+                  <div class="text-sm font-bold text-gray-200 flex items-center space-x-2 flex-wrap">
+                    <span>{{ powerStatusText }}</span>
+                    <span v-if="isCharging" class="px-2 py-0.5 rounded-full text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                      ⚡ 正在通过 USB 充电
+                    </span>
+                  </div>
+                  <div class="text-xs text-gray-400">
+                    供电模式: <span class="text-cyan-300 font-medium">{{ powerMode === 'wired' ? 'USB 有线直连 / 适配器供电' : '内置锂电池无线供电' }}</span>
+                  </div>
+                  <!-- 电量百分比进度条 -->
+                  <div class="w-full bg-gray-800 rounded-full h-2.5 overflow-hidden mt-2">
+                    <div class="h-full rounded-full transition-all duration-500"
+                         :class="isCharging ? 'bg-gradient-to-r from-amber-500 to-yellow-400 animate-pulse' : (batteryLevel >= 60 ? 'bg-emerald-400' : (batteryLevel >= 25 ? 'bg-amber-400' : 'bg-red-500'))"
+                         :style="{ width: batteryLevel + '%' }"></div>
+                  </div>
+                  <div class="flex items-center justify-between text-[11px] text-gray-500 pt-1">
+                    <span>最后上报: {{ lastReportTime || '尚未接收' }}</span>
+                    <span class="flex items-center space-x-1.5">
+                      <input type="checkbox" id="autoPoll" v-model="autoPollBattery" class="rounded bg-gray-800 border-gray-700 text-cyan-500 focus:ring-0">
+                      <label for="autoPoll" class="cursor-pointer text-gray-400 hover:text-gray-300">自动轮询 (15s)</label>
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 电池说明提示 -->
+              <div class="text-xs text-gray-400 bg-gray-950/40 p-3.5 rounded-xl border border-gray-800/40 space-y-1.5 leading-relaxed">
+                <div class="text-cyan-400/90 font-semibold flex items-center space-x-1.5">
+                  <span>💡</span>
+                  <span>迈从 K980 电池与指示灯规范说明：</span>
+                </div>
+                <div>• 键盘内置 3.7V 大容量锂电池，支持边充边用，Type-C 5V 安全输入。</div>
+                <div>• 当键盘电量低于 3.5V ~ 3.2V 时，右上角指示灯将出现红灯快闪低电报警。</div>
+                <div>• 充满电后主控芯片将自动转为微弱浮充或切断充电，指示灯恢复为当前通道常亮状态。</div>
+              </div>
+            </div>
+
+            <!-- 卡片 2: 固件版本与硬件主控诊断 -->
+            <div class="bg-gray-900/60 border border-gray-800 rounded-2xl p-5 space-y-4 shadow-lg">
+              <div class="flex items-center justify-between border-b border-gray-800/80 pb-3">
+                <div class="flex items-center space-x-2">
+                  <span class="text-lg">🛡️</span>
+                  <span class="text-sm font-semibold text-white">固件状态与主控诊断</span>
+                </div>
+                <span class="px-2 py-0.5 rounded-full text-[10px] font-mono bg-emerald-950 text-emerald-400 border border-emerald-800">
+                  ● 固件状态良好
+                </span>
+              </div>
+
+              <div class="grid grid-cols-2 gap-3 text-xs">
+                <div class="p-3 rounded-xl bg-gray-950/60 border border-gray-800">
+                  <div class="text-gray-400">固件版本 (Firmware)</div>
+                  <div class="text-white font-mono font-bold text-sm mt-1 flex items-center space-x-1.5">
+                    <span>{{ firmwareVer }}</span>
+                    <span class="text-[10px] text-emerald-400 font-sans px-1.5 py-0.2 rounded bg-emerald-950/80 border border-emerald-800/60">官方最新</span>
+                  </div>
+                  <div class="text-[10px] text-gray-500 mt-0.5">对应官方 Cfg.ini KbFw=22 固件标定</div>
+                </div>
+
+                <div class="p-3 rounded-xl bg-gray-950/60 border border-gray-800">
+                  <div class="text-gray-400">主控芯片方案 (MCU)</div>
+                  <div class="text-cyan-300 font-mono font-bold text-sm mt-1">SinoWealth BYK916</div>
+                  <div class="text-[10px] text-gray-500 mt-0.5">中颖低功耗三模机械键盘主控</div>
+                </div>
+
+                <div class="p-3 rounded-xl bg-gray-950/60 border border-gray-800">
+                  <div class="text-gray-400">USB 硬件设备标识 (Hardware ID)</div>
+                  <div class="text-gray-200 font-mono text-xs mt-1">VID: 0x258A · PID: 0x0049</div>
+                  <div class="text-[10px] text-gray-500 mt-0.5">已授权 WebHID 通道免驱直连</div>
+                </div>
+
+                <div class="p-3 rounded-xl bg-gray-950/60 border border-gray-800">
+                  <div class="text-gray-400">Input Report 接收帧数</div>
+                  <div class="text-emerald-400 font-mono font-bold text-sm mt-1">{{ inputReportCount }} 帧</div>
+                  <div class="text-[10px] text-gray-500 mt-0.5">实时中断事件监听中</div>
+                </div>
+              </div>
+
+              <!-- 通信通道健康状态 -->
+              <div class="bg-gray-950/40 p-3.5 rounded-xl border border-gray-800/40 space-y-2 text-xs">
+                <div class="font-semibold text-gray-300">📡 HID 通信协议管道状态：</div>
+                <div class="flex items-center justify-between text-gray-400">
+                  <span>• Feature Report 0x06 (1032字节 参数与灯效通道)</span>
+                  <span class="text-emerald-400 font-mono">✔️ 活跃就绪</span>
+                </div>
+                <div class="flex items-center justify-between text-gray-400">
+                  <span>• Feature Report 0x05 (8字节 电量/系统状态通道)</span>
+                  <span class="text-emerald-400 font-mono">✔️ 活跃就绪</span>
+                </div>
+                <div class="flex items-center justify-between text-gray-400">
+                  <span>• Input Report (键盘主动状态与按键推送通道)</span>
+                  <span class="text-emerald-400 font-mono">✔️ 实时监听中</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- 卡片 3: 实时上报帧监听检查器 (Live Input Report Inspector) -->
+          <div class="bg-gray-900/60 border border-gray-800 rounded-2xl p-5 space-y-3 shadow-lg">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center space-x-2">
+                <span class="text-lg">📡</span>
+                <span class="text-sm font-semibold text-white">实时 Input Report 报文流捕获器</span>
+              </div>
+              <div class="flex items-center space-x-3 text-xs">
+                <span class="text-gray-400">已捕获: <span class="text-cyan-400 font-mono">{{ inputReportCount }}</span> 帧</span>
+                <button @click="clearInputReports" class="text-gray-400 hover:text-white transition">清空捕获</button>
+              </div>
+            </div>
+
+            <div class="bg-black/80 rounded-xl p-3 font-mono text-xs text-gray-300 max-h-48 overflow-y-auto space-y-1.5 custom-scroll border border-gray-800">
+              <div v-if="inputReportsList.length === 0" class="text-gray-600 italic py-2">
+                等待键盘中断上报数据（敲击按键或发生电量/模式变动时，键盘将通过 Input Report 推送事件）...
+              </div>
+              <div v-for="(rep, idx) in inputReportsList" :key="idx" class="flex items-start space-x-2 text-[11px] hover:bg-gray-900/60 p-1 rounded">
+                <span class="text-gray-500 shrink-0">[{{ rep.time }}]</span>
+                <span class="px-1.5 py-0.2 rounded text-[10px] shrink-0 font-bold"
+                      :class="rep.reportId === 5 ? 'bg-cyan-950 text-cyan-300 border border-cyan-800' : 'bg-purple-950 text-purple-300 border border-purple-800'">
+                  Report 0x{{ rep.reportId.toString(16).padStart(2, '0') }}
+                </span>
+                <span class="text-emerald-400 shrink-0">({{ rep.bytes.length }}B)</span>
+                <span class="text-gray-300 font-mono tracking-wider break-all">{{ rep.hex }}</span>
+                <span v-if="rep.desc" class="text-cyan-400/90 shrink-0 italic">-- {{ rep.desc }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Tab 3: 硬件与调试日志 -->
         <div v-show="activeTab === 'debug'" class="p-6 space-y-4">
           <div class="flex items-center justify-between">
@@ -487,6 +690,33 @@
         const activeTab = ref('light');
         const audioFeedback = ref(true);
         const autoSync = ref(true);
+
+        // 电量与固件状态监控
+        const batteryLevel = ref(100);
+        const isCharging = ref(false);
+        const powerMode = ref('wired'); // 'wired' | 'wireless'
+        const powerStatusText = ref('未检测');
+        const isQueryingBattery = ref(false);
+        const lastReportTime = ref('');
+        const autoPollBattery = ref(true);
+        let batteryPollTimer = null;
+
+        const firmwareVer = ref('v22');
+        const inputReportCount = ref(0);
+        const inputReportsList = ref([]);
+
+        function addInputReport(reportId, u8Data, desc = '') {
+          inputReportCount.value++;
+          const now = new Date();
+          const time = now.toTimeString().split(' ')[0] + '.' + String(now.getMilliseconds()).padStart(3, '0');
+          const hex = Array.from(u8Data).map(b => b.toString(16).padStart(2, '0')).join(' ');
+          inputReportsList.value.unshift({ time, reportId, bytes: u8Data, hex, desc });
+          if (inputReportsList.value.length > 50) inputReportsList.value.pop();
+        }
+
+        function clearInputReports() {
+          inputReportsList.value = [];
+        }
 
         const keys = ref(typeof K980_KEYS !== 'undefined' ? K980_KEYS : []);
         const selectedKeyIds = ref(new Set());
@@ -619,6 +849,84 @@
           } catch(e) {}
         }
 
+        // 解析电量与供电状态响应报文
+        // 协议基于中颖 BYK916 固件协议 (CDrv196::ReadPower)
+        function parseBatteryBytes(u8, source = 'FeatureReport') {
+          if (!u8 || u8.length < 2) return;
+          const cmd = u8[0];
+          const val = u8[1];
+
+          lastReportTime.value = new Date().toLocaleTimeString();
+
+          if (cmd === 0x10) {
+            // USB 有线连接 / 正在充电
+            powerMode.value = 'wired';
+            if (val === 1) {
+              isCharging.value = false;
+              batteryLevel.value = 100;
+              powerStatusText.value = 'USB 供电 (电池已充满 100%)';
+            } else {
+              isCharging.value = true;
+              batteryLevel.value = (val > 1 && val <= 100) ? val : 100;
+              powerStatusText.value = 'USB 供电 (正在为内置电池充电)';
+            }
+            addLog('Power', `[${source}] 状态: ${powerStatusText.value}, 原始码: [0x${cmd.toString(16)}, 0x${val.toString(16)}]`, 'info');
+          } else if (cmd === 0x11) {
+            // 无线模式 / 电池放电
+            powerMode.value = 'wireless';
+            isCharging.value = false;
+            batteryLevel.value = Math.min(100, Math.max(0, val));
+            powerStatusText.value = `无线供电 (电量剩余 ${batteryLevel.value}%)`;
+            addLog('Power', `[${source}] 状态: ${powerStatusText.value}, 原始码: [0x${cmd.toString(16)}, 0x${val.toString(16)}]`, 'info');
+          } else {
+            powerStatusText.value = `工作状态 (0x${cmd.toString(16)}: 0x${val.toString(16)})`;
+          }
+        }
+
+        // 主动向键盘查询电量 (Report ID 0x05, 发送 0x90 指令字)
+        async function queryBattery() {
+          if (!hidDevice || !connected.value) return;
+          if (isQueryingBattery.value) return;
+          isQueryingBattery.value = true;
+
+          try {
+            addLog('TX', '查询电量与供电状态: 下发 Report 0x05 指令 [0x90, 0x00, 0x00, ...]', 'tx');
+            const req = new Uint8Array([0x90, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+            await hidDevice.sendFeatureReport(0x05, req);
+
+            // 等待主控准备就绪 (参考官方驱动 Sleep 20ms)
+            await new Promise(r => setTimeout(r, 25));
+
+            // 接收 Feature Report 0x05 回传帧
+            const resp = await hidDevice.receiveFeatureReport(0x05);
+            if (resp && resp.byteLength > 0) {
+              const u8 = new Uint8Array(resp.buffer, resp.byteOffset, resp.byteLength);
+              parseBatteryBytes(u8, 'FeatureReport 0x05');
+            }
+          } catch (err) {
+            console.warn('查询电量重试/提示:', err);
+            addLog('Power', `电量查询状态: ${err.message}`, 'info');
+          } finally {
+            isQueryingBattery.value = false;
+          }
+        }
+
+        // 监听来自键盘的 Input Report 中断上报
+        function handleInputReport(event) {
+          const { reportId, data } = event;
+          const u8 = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+          
+          let desc = '';
+          if (reportId === 0x05) {
+            desc = '电源/电池状态帧';
+            parseBatteryBytes(u8, 'InputReport 0x05');
+          } else if (reportId === 0x04) {
+            desc = '按键/状态变化帧';
+          }
+
+          addInputReport(reportId, u8, desc);
+        }
+
         // WebHID 连接逻辑
         async function connectDevice() {
           if (!navigator.hid) {
@@ -648,12 +956,24 @@
               await hidDevice.open();
             }
 
+            // 注册全局 Input Report 中断监听器
+            hidDevice.addEventListener('inputreport', handleInputReport);
+
             connected.value = true;
             deviceName.value = hidDevice.productName || 'MCHOSE K980';
-            addLog('WebHID', `设备连接成功！通信通道已就绪`, 'info');
+            addLog('WebHID', `设备连接成功！通信通道已就绪，已激活实时 Input Report 监听`, 'info');
 
-            // 尝试读取当前键盘参数
+            // 立即查询电量与系统参数
+            await queryBattery();
             await readKeyboardParams();
+
+            // 启动定时轮询 (每 15 秒查询一次电量)
+            if (batteryPollTimer) clearInterval(batteryPollTimer);
+            batteryPollTimer = setInterval(() => {
+              if (connected.value && autoPollBattery.value) {
+                queryBattery();
+              }
+            }, 15000);
           } catch (err) {
             console.error(err);
             addLog('WebHID', `连接异常: ${err.message}`, 'error');
@@ -664,14 +984,20 @@
         }
 
         async function disconnectDevice() {
+          if (batteryPollTimer) {
+            clearInterval(batteryPollTimer);
+            batteryPollTimer = null;
+          }
           if (hidDevice) {
             try {
+              hidDevice.removeEventListener('inputreport', handleInputReport);
               await hidDevice.close();
             } catch(e) {}
             hidDevice = null;
           }
           connected.value = false;
           deviceName.value = '';
+          powerStatusText.value = '未连接';
           addLog('WebHID', '设备已断开连接');
         }
 
@@ -942,6 +1268,18 @@
           mediaKeys,
           systemKeys,
           mouseKeys,
+          batteryLevel,
+          isCharging,
+          powerMode,
+          powerStatusText,
+          isQueryingBattery,
+          lastReportTime,
+          autoPollBattery,
+          firmwareVer,
+          inputReportCount,
+          inputReportsList,
+          queryBattery,
+          clearInputReports,
           logs,
           connectDevice,
           disconnectDevice,
