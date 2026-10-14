@@ -1,0 +1,966 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>迈从 K980 (三模) WebHID 键盘驱动</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Vue 3 CDN -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#ecfeff',
+              100: '#cffafe',
+              400: '#22d3ee',
+              500: '#06b6d4',
+              600: '#0891b2',
+            },
+            cyber: {
+              dark: '#0b0f19',
+              card: '#111827',
+              border: '#1f293d',
+              accent: '#38bdf8',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      background-color: #080c14;
+      color: #f3f4f6;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      user-select: none;
+    }
+    .custom-scroll::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scroll::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 3px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+    .glow-cyan {
+      box-shadow: 0 0 15px rgba(34, 211, 238, 0.35);
+    }
+    .glow-key {
+      filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.75));
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col custom-scroll">
+  <div id="app" class="flex-1 flex flex-col">
+    <!-- 顶部导航栏 -->
+    <header class="border-b border-cyber-border bg-cyber-dark/80 backdrop-blur sticky top-0 z-50 px-6 py-3 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-brand-500 to-indigo-600 flex items-center justify-center font-bold text-white shadow-lg shadow-cyan-500/20">
+          K
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <h1 class="text-lg font-bold tracking-wide text-white">迈从 MCHOSE K980</h1>
+            <span class="text-xs px-2 py-0.5 rounded-full bg-cyan-950/80 text-cyan-400 border border-cyan-800/60 font-mono">WebHID v1.0</span>
+          </div>
+          <p class="text-xs text-gray-400">98 配列三模机械键盘 · 现代化网页上位机</p>
+        </div>
+      </div>
+
+      <!-- 连接状态与操作 -->
+      <div class="flex items-center space-x-4">
+        <div class="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-cyber-card border border-cyber-border text-xs">
+          <span class="relative flex h-2.5 w-2.5">
+            <span v-if="connected" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span :class="connected ? 'bg-emerald-500' : 'bg-red-500'" class="relative inline-flex rounded-full h-2.5 w-2.5"></span>
+          </span>
+          <span class="font-medium" :class="connected ? 'text-emerald-400' : 'text-gray-400'">
+            {{ connected ? (deviceName || '迈从 K980 已连接') : '键盘未连接' }}
+          </span>
+        </div>
+
+        <button 
+          v-if="!connected" 
+          @click="connectDevice"
+          :disabled="isConnecting"
+          class="flex items-center space-x-1.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-medium text-xs px-4 py-2 rounded-lg shadow-lg shadow-cyan-500/25 transition active:scale-95 disabled:opacity-50">
+          <span v-if="isConnecting">正在连接...</span>
+          <span v-else>🔍 连接键盘</span>
+        </button>
+
+        <button 
+          v-else 
+          @click="disconnectDevice"
+          class="flex items-center space-x-1.5 bg-gray-800 hover:bg-red-950/60 hover:text-red-400 text-gray-300 font-medium text-xs px-3.5 py-2 rounded-lg border border-gray-700 transition active:scale-95">
+          <span>断开连接</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- 主要工作区 -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-6 space-y-6">
+      
+      <!-- 提示横条 (未连接时显示) -->
+      <div v-if="!connected" class="bg-gradient-to-r from-blue-950/40 via-cyan-950/30 to-indigo-950/40 border border-cyan-900/40 rounded-2xl p-4 flex items-center justify-between shadow-xl">
+        <div class="flex items-center space-x-3.5">
+          <div class="p-2.5 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 text-xl">
+            💡
+          </div>
+          <div>
+            <div class="text-sm font-semibold text-cyan-200">欢迎使用迈从 K980 WebHID 驱动</div>
+            <div class="text-xs text-cyan-400/80 mt-0.5">请确保键盘通过 <b>USB 有线模式</b> 或 <b>2.4G 接收器</b> 连接电脑，点击右上角「连接键盘」授权即可免驱控制！</div>
+          </div>
+        </div>
+        <button @click="connectDevice" class="px-4 py-1.5 text-xs font-semibold rounded-lg bg-cyan-500 text-gray-950 hover:bg-cyan-400 transition">
+          立即连接
+        </button>
+      </div>
+
+      <!-- 98 键真实可视化画布 -->
+      <section class="bg-cyber-card border border-cyber-border rounded-2xl p-6 shadow-2xl relative overflow-hidden">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center space-x-3">
+            <h2 class="text-base font-semibold text-white flex items-center space-x-2">
+              <span>⌨️ 98 配列实时交互模型</span>
+            </h2>
+            <span class="text-xs text-gray-400">支持全键测试 · 敲击发光 · 点击按键查看详情</span>
+          </div>
+
+          <div class="flex items-center space-x-4 text-xs">
+            <!-- 多选模式开关 -->
+            <label class="flex items-center space-x-1.5 cursor-pointer px-2.5 py-1 rounded-lg bg-gray-800/90 border border-gray-700/80 text-gray-300 hover:text-white hover:border-cyan-500/50 transition">
+              <input type="checkbox" v-model="isMultiSelectMode" class="rounded bg-gray-900 border-gray-700 text-cyan-500 focus:ring-0">
+              <span class="font-medium" :class="isMultiSelectMode ? 'text-cyan-400' : 'text-gray-300'">🔘 多选模式</span>
+            </label>
+
+            <!-- 快捷选区按钮 -->
+            <div class="hidden sm:flex items-center space-x-1 border border-gray-800 rounded-lg p-0.5 bg-gray-900/70">
+              <button @click="selectKeyGroup('f')" class="px-2 py-0.5 rounded text-[11px] text-gray-400 hover:text-cyan-300 hover:bg-gray-800 transition">F区</button>
+              <button @click="selectKeyGroup('alpha')" class="px-2 py-0.5 rounded text-[11px] text-gray-400 hover:text-cyan-300 hover:bg-gray-800 transition">字母区</button>
+              <button @click="selectKeyGroup('num')" class="px-2 py-0.5 rounded text-[11px] text-gray-400 hover:text-cyan-300 hover:bg-gray-800 transition">数字小键盘</button>
+              <button @click="selectKeyGroup('arrow')" class="px-2 py-0.5 rounded text-[11px] text-gray-400 hover:text-cyan-300 hover:bg-gray-800 transition">方向键</button>
+              <button @click="selectAllKeys" class="px-2 py-0.5 rounded text-[11px] text-gray-400 hover:text-cyan-300 hover:bg-gray-800 transition">全选</button>
+            </div>
+
+            <label class="flex items-center space-x-1.5 cursor-pointer text-gray-300 hover:text-white">
+              <input type="checkbox" v-model="audioFeedback" class="rounded bg-gray-800 border-gray-700 text-cyan-500 focus:ring-0">
+              <span>🔊 击键音效</span>
+            </label>
+            <div class="px-2.5 py-1 rounded bg-gray-800/80 text-gray-400 font-mono">
+              测试击键: <span class="text-cyan-400 font-bold">{{ keystrokeCount }}</span>
+            </div>
+            <button @click="resetTestState" class="text-gray-400 hover:text-cyan-400 transition">
+              重置测试
+            </button>
+          </div>
+        </div>
+
+        <!-- 键盘 SVG 舞台 (以 Cfg.ini 的 650x238 为真实基准) -->
+        <div class="w-full flex justify-center py-2 bg-gradient-to-b from-[#090d16] to-[#0d1320] rounded-xl border border-gray-800/80 p-4 shadow-inner">
+          <svg viewBox="0 0 655 245" class="w-full max-w-5xl h-auto select-none">
+            <!-- 外壳阴影与底座 -->
+            <rect x="5" y="5" width="645" height="235" rx="14" fill="#131824" stroke="#252f44" stroke-width="2"/>
+            <rect x="8" y="8" width="639" height="229" rx="12" fill="#0d111a"/>
+            <!-- 品牌铭牌点缀 -->
+            <text x="635" y="230" text-anchor="end" fill="#334155" font-size="9" font-weight="bold" letter-spacing="1">MCHOSE K980</text>
+
+            <!-- 按键渲染 -->
+            <g v-for="k in keys" :key="k.id" @click="selectKey(k, $event)" class="cursor-pointer">
+              <!-- 按键发光光晕 (按下或高亮时) -->
+              <rect 
+                v-if="pressedKeys[k.eventCode] || testedKeys[k.eventCode] || isKeySelected(k)"
+                :x="k.x - 2" 
+                :y="k.y - 2" 
+                :width="k.w + 4" 
+                :height="k.h + 4" 
+                rx="5"
+                :fill="isKeySelected(k) ? 'rgba(56, 189, 248, 0.45)' : 'rgba(16, 185, 129, 0.4)'"
+                class="glow-key"
+              />
+
+              <!-- 键帽主体 -->
+              <rect 
+                :x="k.x" 
+                :y="k.y" 
+                :width="k.w" 
+                :height="k.h" 
+                rx="4" 
+                :fill="getKeyFill(k)"
+                :stroke="getKeyStroke(k)"
+                stroke-width="1"
+                class="transition-colors duration-150"
+              />
+
+              <!-- 键帽文字 -->
+              <text 
+                :x="k.x + k.w / 2" 
+                :y="k.y + k.h / 2 + (k.label.length > 5 ? 2.5 : 3.5)" 
+                text-anchor="middle" 
+                :fill="getKeyTextColor(k)"
+                :font-size="getKeyFontSize(k)"
+                font-weight="500"
+                class="pointer-events-none select-none tracking-tight">
+                {{ formatLabel(k.label) }}
+              </text>
+            </g>
+          </svg>
+        </div>
+
+        <!-- 选中按键快速状态卡片与批量控制条 -->
+        <div class="mt-4 p-3.5 bg-gray-900/90 border border-cyan-800/50 rounded-xl flex items-center justify-between">
+          <!-- 有按键选中时 -->
+          <div v-if="selectedCount > 0" class="flex items-center space-x-3 overflow-hidden">
+            <span class="px-2.5 py-1 rounded-lg bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/40 text-xs shrink-0 flex items-center space-x-1">
+              <span>已选中 {{ selectedCount }} 个按键</span>
+            </span>
+            
+            <div v-if="selectedCount === 1 && firstSelectedKey" class="text-xs text-gray-300">
+              <span class="text-white font-medium">按键: {{ firstSelectedKey.label }} ({{ firstSelectedKey.id }})</span>
+              <span class="text-gray-400 ml-3">物理矩阵: 行 {{ firstSelectedKey.row }}, 列 {{ firstSelectedKey.col }}</span>
+              <span class="text-gray-400 ml-3">扫描码: {{ firstSelectedKey.code2 }}</span>
+              <span class="text-gray-500 ml-2">(再次点击该按键可取消选中)</span>
+            </div>
+
+            <div v-else class="text-xs text-gray-300 truncate">
+              <span class="text-gray-400">键位列表: </span>
+              <span class="text-cyan-300 font-mono">{{ selectedLabelsText }}</span>
+            </div>
+          </div>
+
+          <!-- 无按键选中时 -->
+          <div v-else class="text-xs text-gray-400 flex items-center space-x-2">
+            <span>💡 提示：点击任意按键即可选中（再次点击可取消选中）；可开启「多选模式」或按住 Ctrl 键批量框选多个按键</span>
+          </div>
+
+          <!-- 右侧操作按钮 -->
+          <div v-if="selectedCount > 0" class="flex items-center space-x-2 shrink-0">
+            <button @click="clearSelection" class="text-xs px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white border border-gray-700 transition">
+              取消选择
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 控制面板 Tabs -->
+      <section class="bg-cyber-card border border-cyber-border rounded-2xl shadow-xl overflow-hidden">
+        <!-- 标签页头部 -->
+        <div class="flex border-b border-cyber-border bg-gray-900/60 px-6 pt-3 space-x-6 text-sm">
+          <button 
+            @click="activeTab = 'light'"
+            :class="activeTab === 'light' ? 'text-cyan-400 border-cyan-400 font-semibold' : 'text-gray-400 hover:text-gray-200 border-transparent'"
+            class="pb-3 border-b-2 flex items-center space-x-2 transition">
+            <span>🎨 RGB 灯效配置</span>
+          </button>
+
+          <button 
+            @click="activeTab = 'remap'"
+            :class="activeTab === 'remap' ? 'text-cyan-400 border-cyan-400 font-semibold' : 'text-gray-400 hover:text-gray-200 border-transparent'"
+            class="pb-3 border-b-2 flex items-center space-x-2 transition">
+            <span>🔧 按键映射与功能</span>
+          </button>
+
+          <button 
+            @click="activeTab = 'debug'"
+            :class="activeTab === 'debug' ? 'text-cyan-400 border-cyan-400 font-semibold' : 'text-gray-400 hover:text-gray-200 border-transparent'"
+            class="pb-3 border-b-2 flex items-center space-x-2 transition">
+            <span>📊 硬件与通信日志</span>
+          </button>
+        </div>
+
+        <!-- Tab 1: 灯光控制 -->
+        <div v-show="activeTab === 'light'" class="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <!-- 左侧：模式选择 (22 种模式) -->
+          <div class="lg:col-span-2 space-y-4">
+            <div class="flex items-center justify-between">
+              <h3 class="text-sm font-semibold text-white">灯光动态效果模式 (22 种官方模式)</h3>
+              <span class="text-xs text-gray-400">当前硬件模式码: 0x{{ currentModeObj?.code.toString(16).padStart(2, '0') || '00' }}</span>
+            </div>
+
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 max-h-72 overflow-y-auto pr-1 custom-scroll">
+              <button 
+                v-for="m in lightModes" 
+                :key="m.id"
+                @click="selectLightMode(m)"
+                :class="selectedModeId === m.id ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500 font-bold shadow-md shadow-cyan-500/10' : 'bg-gray-800/60 hover:bg-gray-800 text-gray-300 border-gray-700/60'"
+                class="p-2.5 rounded-xl border text-xs text-left transition flex items-center justify-between">
+                <span>{{ m.name }}</span>
+                <span v-if="selectedModeId === m.id" class="w-2 h-2 rounded-full bg-cyan-400"></span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 右侧：灯光参数调节 -->
+          <div class="bg-gray-900/70 border border-gray-800 rounded-xl p-5 space-y-5">
+            <h3 class="text-sm font-semibold text-white flex items-center justify-between">
+              <span>灯效参数微调</span>
+              <label class="flex items-center space-x-1 text-xs text-cyan-400 cursor-pointer">
+                <input type="checkbox" v-model="autoSync" class="rounded bg-gray-800 border-gray-700 text-cyan-500">
+                <span>实时发送</span>
+              </label>
+            </h3>
+
+            <!-- 亮度调节 (0 - 4 档) -->
+            <div class="space-y-2">
+              <div class="flex justify-between text-xs text-gray-300">
+                <span>亮度等级</span>
+                <span class="font-mono text-cyan-400">{{ brightness }} / 4 档 ({{ brightness * 25 }}%)</span>
+              </div>
+              <input 
+                type="range" 
+                v-model.number="brightness" 
+                min="0" 
+                max="4" 
+                step="1"
+                @input="onParamChange"
+                class="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-cyan-400">
+              <div class="flex justify-between text-[10px] text-gray-500">
+                <span>关闭</span>
+                <span>25%</span>
+                <span>50%</span>
+                <span>75%</span>
+                <span>100%</span>
+              </div>
+            </div>
+
+            <!-- 速度调节 (0 - 4 档) -->
+            <div class="space-y-2" :class="{'opacity-40 pointer-events-none': currentModeObj && !currentModeObj.speed}">
+              <div class="flex justify-between text-xs text-gray-300">
+                <span>动态速度 <span v-if="currentModeObj && !currentModeObj.speed" class="text-[10px] text-gray-400 font-normal">(当前模式固定速度)</span></span>
+                <span class="font-mono text-cyan-400">{{ speed }} / 4 档</span>
+              </div>
+              <input 
+                type="range" 
+                v-model.number="speed" 
+                min="0" 
+                max="4" 
+                step="1"
+                @input="onParamChange"
+                :disabled="currentModeObj && !currentModeObj.speed"
+                class="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-cyan-400">
+              <div class="flex justify-between text-[10px] text-gray-500">
+                <span>极慢</span>
+                <span>慢速</span>
+                <span>标准</span>
+                <span>快速</span>
+                <span>极速</span>
+              </div>
+            </div>
+
+            <!-- 预设颜色拾取 -->
+            <div class="space-y-2" :class="{'opacity-40 pointer-events-none': currentModeObj && !currentModeObj.color}">
+              <div class="flex justify-between text-xs text-gray-300">
+                <span>预设配色</span>
+                <span v-if="currentModeObj && !currentModeObj.color" class="text-[10px] text-cyan-400 font-normal">🌈 固定全彩流动特效 (无需选色)</span>
+              </div>
+              <div class="grid grid-cols-4 gap-2">
+                <button 
+                  v-for="(c, idx) in presetColors" 
+                  :key="idx"
+                  @click="selectPresetColor(idx)"
+                  :class="selectedColorIndex === idx ? 'ring-2 ring-white ring-offset-2 ring-offset-gray-900 scale-105' : 'opacity-80 hover:opacity-100'"
+                  class="h-8 rounded-lg flex items-center justify-center text-[10px] font-bold text-gray-950 transition shadow"
+                  :style="{ background: c.bg }">
+                  {{ c.name }}
+                </button>
+              </div>
+            </div>
+
+            <!-- 发送按钮 -->
+            <button 
+              @click="applyLighting"
+              :disabled="!connected"
+              class="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-semibold text-xs shadow-lg shadow-cyan-500/20 transition active:scale-98 disabled:opacity-40">
+              🚀 立即同步至键盘
+            </button>
+          </div>
+        </div>
+
+        <!-- Tab 2: 按键映射 -->
+        <div v-show="activeTab === 'remap'" class="p-6 space-y-6">
+          <div class="flex items-center justify-between">
+            <div>
+              <h3 class="text-sm font-semibold text-white">按键自定义重映射 (Remap)</h3>
+              <p class="text-xs text-gray-400 mt-0.5">支持单选或批量多选按键，点击下方功能即可为选中的所有键快速映射新功能</p>
+            </div>
+            <div v-if="selectedCount > 0" class="text-xs px-3 py-1.5 bg-cyan-950 text-cyan-300 border border-cyan-800 rounded-lg flex items-center space-x-2">
+              <span>当前映射目标: <b class="text-white">已选中 {{ selectedCount }} 个键</b> ({{ selectedLabelsText }})</span>
+              <button @click="clearSelection" class="underline text-gray-400 hover:text-white ml-2">清除选择</button>
+            </div>
+            <div v-else class="text-xs text-amber-400/90 bg-amber-950/40 px-3 py-1.5 rounded-lg border border-amber-900/40">
+              ⚠️ 请在上方键盘模型中点击选择一个或多个按键，再点击下方功能进行映射
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <!-- 常用多媒体 -->
+            <div class="bg-gray-900/60 border border-gray-800 rounded-xl p-4 space-y-3">
+              <div class="text-xs font-semibold text-cyan-400">🎵 多媒体与音量控制</div>
+              <div class="grid grid-cols-2 gap-2">
+                <button v-for="m in mediaKeys" :key="m.name" @click="assignFunction(m)" class="p-2 text-xs bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-lg text-left transition">
+                  {{ m.name }}
+                </button>
+              </div>
+            </div>
+
+            <!-- 系统快捷键 -->
+            <div class="bg-gray-900/60 border border-gray-800 rounded-xl p-4 space-y-3">
+              <div class="text-xs font-semibold text-cyan-400">⚡ 系统常用快捷功能</div>
+              <div class="grid grid-cols-2 gap-2">
+                <button v-for="s in systemKeys" :key="s.name" @click="assignFunction(s)" class="p-2 text-xs bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-lg text-left transition">
+                  {{ s.name }}
+                </button>
+              </div>
+            </div>
+
+            <!-- 鼠标功能 -->
+            <div class="bg-gray-900/60 border border-gray-800 rounded-xl p-4 space-y-3">
+              <div class="text-xs font-semibold text-cyan-400">🖱️ 鼠标模拟键</div>
+              <div class="grid grid-cols-2 gap-2">
+                <button v-for="ms in mouseKeys" :key="ms.name" @click="assignFunction(ms)" class="p-2 text-xs bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-lg text-left transition">
+                  {{ ms.name }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 3: 硬件与调试日志 -->
+        <div v-show="activeTab === 'debug'" class="p-6 space-y-4">
+          <div class="flex items-center justify-between">
+            <div class="text-xs text-gray-300">
+              <span class="font-bold text-white">HID 报文控制台</span> (用于监测底层 Feature Report 读写)
+            </div>
+            <button @click="clearLogs" class="text-xs text-gray-400 hover:text-white transition">清空日志</button>
+          </div>
+
+          <div class="bg-black/80 rounded-xl p-4 font-mono text-xs text-gray-300 h-64 overflow-y-auto space-y-1 custom-scroll border border-gray-800">
+            <div v-if="logs.length === 0" class="text-gray-600 italic">暂无通信报文记录...</div>
+            <div v-for="(log, idx) in logs" :key="idx" :class="log.type === 'error' ? 'text-red-400' : (log.type === 'tx' ? 'text-cyan-400' : 'text-emerald-400')">
+              <span class="text-gray-500">[{{ log.time }}]</span>
+              <span class="font-bold ml-1">[{{ log.tag }}]</span>
+              <span class="ml-2">{{ log.msg }}</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- 底部状态栏 -->
+    <footer class="border-t border-cyber-border bg-cyber-dark/80 px-6 py-2.5 text-xs text-gray-500 flex items-center justify-between">
+      <div>
+        迈从 (MCHOSE) K980 三模机械键盘 · 中颖 SinoWealth BYK916 协议引擎
+      </div>
+      <div class="flex items-center space-x-4">
+        <span>VID: 0x258A</span>
+        <span>PID: 0x0049</span>
+        <span>WebHID API Ready</span>
+      </div>
+    </footer>
+  </div>
+
+  <!-- 引入按键布局数据 -->
+  <script src="keys.js"></script>
+
+  <!-- Vue 3 核心业务逻辑 -->
+  <script>
+    const { createApp, ref, computed, onMounted, onUnmounted } = Vue;
+
+    createApp({
+      setup() {
+        const connected = ref(false);
+        const isConnecting = ref(false);
+        const deviceName = ref('');
+        const activeTab = ref('light');
+        const audioFeedback = ref(true);
+        const autoSync = ref(true);
+
+        const keys = ref(typeof K980_KEYS !== 'undefined' ? K980_KEYS : []);
+        const selectedKeyIds = ref(new Set());
+        const isMultiSelectMode = ref(false);
+
+        const selectedCount = computed(() => selectedKeyIds.value.size);
+        const selectedKeysList = computed(() => {
+          return keys.value.filter(k => selectedKeyIds.value.has(k.id));
+        });
+        const selectedLabelsText = computed(() => {
+          return selectedKeysList.value.map(k => k.label).join(', ');
+        });
+        const firstSelectedKey = computed(() => {
+          return selectedKeysList.value.length > 0 ? selectedKeysList.value[0] : null;
+        });
+
+        function isKeySelected(k) {
+          return selectedKeyIds.value.has(k.id);
+        }
+
+        const pressedKeys = ref({});
+        const testedKeys = ref({});
+        const keystrokeCount = ref(0);
+
+        let hidDevice = null;
+        const logs = ref([]);
+
+        function addLog(tag, msg, type = 'info') {
+          const now = new Date();
+          const time = now.toTimeString().split(' ')[0] + '.' + String(now.getMilliseconds()).padStart(3, '0');
+          logs.value.push({ time, tag, msg, type });
+          if (logs.value.length > 100) logs.value.shift();
+        }
+
+        function clearLogs() {
+          logs.value = [];
+        }
+
+        // 22 种官方灯效模式数据 (严格根据 Cfg.ini 的 hw 代码精准映射)
+        const lightModes = ref([
+          { id: 1, name: "常亮模式", code: 1, speed: false, bright: true, color: true },
+          { id: 2, name: "呼吸模式", code: 2, speed: true, bright: true, color: true },
+          { id: 3, name: "梦幻彩虹", code: 3, speed: true, bright: true, color: false },
+          { id: 4, name: "一触即发", code: 4, speed: true, bright: true, color: true },
+          { id: 5, name: "雨中漫步", code: 5, speed: true, bright: true, color: true },
+          { id: 6, name: "彩虹轮盘", code: 6, speed: true, bright: true, color: true },
+          { id: 7, name: "涟漪扩散", code: 7, speed: true, bright: true, color: true },
+          { id: 8, name: "繁星点点", code: 8, speed: true, bright: true, color: true },
+          { id: 9, name: "踏雪无痕", code: 9, speed: true, bright: true, color: true },
+          { id: 10, name: "川流不息", code: 10, speed: true, bright: true, color: true },
+          { id: 11, name: "随波逐流", code: 11, speed: true, bright: true, color: true },
+          { id: 12, name: "如影随形", code: 12, speed: true, bright: true, color: true },
+          { id: 13, name: "正弦光波", code: 13, speed: true, bright: true, color: true },
+          { id: 14, name: "左右扫描", code: 14, speed: true, bright: true, color: true },
+          { id: 15, name: "旋转风车", code: 15, speed: true, bright: true, color: false },
+          { id: 16, name: "七彩瀑布", code: 16, speed: true, bright: true, color: false },
+          { id: 17, name: "花开富贵", code: 17, speed: true, bright: true, color: false },
+          { id: 18, name: "旋转风暴", code: 18, speed: true, bright: true, color: true },
+          { id: 19, name: "来回碰撞", code: 19, speed: true, bright: true, color: true },
+          { id: 20, name: "十全十美", code: 20, speed: true, bright: true, color: true },
+          { id: 21, name: "游戏模式", code: 21, speed: false, bright: false, color: false },
+          { id: 22, name: "关闭灯光", code: 0, speed: false, bright: false, color: false }
+        ]);
+
+        const selectedModeId = ref(1);
+        const brightness = ref(4);
+        const speed = ref(2);
+        const selectedColorIndex = ref(7); // 7 为幻彩/随机
+
+        // 8 种预设颜色 (精准校准硬件色码：修复绿蓝颠倒及双色混色映射)
+        const presetColors = [
+          { name: "红色", bg: "#ef4444", hwCode: 0 },
+          { name: "绿色", bg: "#22c55e", hwCode: 2 }, // 硬件绿码为 2
+          { name: "蓝色", bg: "#3b82f6", hwCode: 1 }, // 硬件蓝码为 1
+          { name: "黄色", bg: "#eab308", hwCode: 4 }, // 硬件黄码为 4 (红+绿)
+          { name: "紫色", bg: "#a855f7", hwCode: 3 }, // 硬件紫码为 3 (红+蓝)
+          { name: "青色", bg: "#06b6d4", hwCode: 5 }, // 硬件青码为 5 (绿+蓝)
+          { name: "白色", bg: "#f8fafc", hwCode: 6 }, // 硬件白码为 6 (全色)
+          { name: "幻彩", bg: "linear-gradient(135deg, #f43f5e, #8b5cf6, #06b6d4)", hwCode: 7 }
+        ];
+
+        const currentModeObj = computed(() => {
+          return lightModes.value.find(m => m.id === selectedModeId.value);
+        });
+
+        // 快捷功能按键库
+        const mediaKeys = [
+          { name: "音量增加", code: 0x80 },
+          { name: "音量减小", code: 0x81 },
+          { name: "静音切换", code: 0x7F },
+          { name: "上一曲目", code: 0xDF },
+          { name: "下一曲目", code: 0xDE },
+          { name: "播放 / 暂停", code: 0xCD },
+          { name: "停止播放", code: 0xB7 }
+        ];
+
+        const systemKeys = [
+          { name: "我的电脑", code: 0x194 },
+          { name: "计算器", code: 0x192 },
+          { name: "默认浏览器", code: 0x223 },
+          { name: "主页", code: 0x22A },
+          { name: "搜索", code: 0x221 },
+          { name: "锁屏", code: 0x19E }
+        ];
+
+        const mouseKeys = [
+          { name: "鼠标左键", code: 0xF0 },
+          { name: "鼠标右键", code: 0xF1 },
+          { name: "鼠标中键", code: 0xF2 },
+          { name: "滚轮向上", code: 0xF3 },
+          { name: "滚轮向下", code: 0xF4 }
+        ];
+
+        // Web Audio 击键音效合成
+        let audioCtx = null;
+        function playKeySound() {
+          if (!audioFeedback.value) return;
+          try {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(650 + Math.random() * 150, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.05);
+          } catch(e) {}
+        }
+
+        // WebHID 连接逻辑
+        async function connectDevice() {
+          if (!navigator.hid) {
+            alert('您的浏览器不支持 WebHID API，请使用 Chrome 或 Edge 浏览器访问！');
+            return;
+          }
+          isConnecting.value = true;
+          try {
+            addLog('WebHID', '正在请求用户授权连接 USB HID 设备...');
+            const devices = await navigator.hid.requestDevice({
+              filters: [
+                { vendorId: 0x258a, productId: 0x0049 }, // 迈从 K980 专属 ID
+                { vendorId: 0x258a } // SinoWealth 兼容设备
+              ]
+            });
+
+            if (devices.length === 0) {
+              addLog('WebHID', '未选择任何设备', 'error');
+              isConnecting.value = false;
+              return;
+            }
+
+            hidDevice = devices[0];
+            addLog('WebHID', `找到设备: ${hidDevice.productName || 'K980 Keyboard'}`);
+
+            if (!hidDevice.opened) {
+              await hidDevice.open();
+            }
+
+            connected.value = true;
+            deviceName.value = hidDevice.productName || 'MCHOSE K980';
+            addLog('WebHID', `设备连接成功！通信通道已就绪`, 'info');
+
+            // 尝试读取当前键盘参数
+            await readKeyboardParams();
+          } catch (err) {
+            console.error(err);
+            addLog('WebHID', `连接异常: ${err.message}`, 'error');
+            alert(`连接失败: ${err.message}`);
+          } finally {
+            isConnecting.value = false;
+          }
+        }
+
+        async function disconnectDevice() {
+          if (hidDevice) {
+            try {
+              await hidDevice.close();
+            } catch(e) {}
+            hidDevice = null;
+          }
+          connected.value = false;
+          deviceName.value = '';
+          addLog('WebHID', '设备已断开连接');
+        }
+
+        // 读取当前键盘参数 (Report ID 0x05)
+        async function readKeyboardParams() {
+          if (!hidDevice || !connected.value) return;
+          try {
+            addLog('TX', '发送查询参数指令 [0x05, 0x83, 0xb6, ...]');
+            const req = new Uint8Array([0x83, 0xb6, 0x00, 0x00, 0x00]);
+            await hidDevice.sendFeatureReport(0x05, req);
+            
+            // 接收响应 (Report ID 0x06)
+            const resp = await hidDevice.receiveFeatureReport(0x06);
+            if (resp && resp.byteLength > 0) {
+              const u8 = new Uint8Array(resp.buffer);
+              addLog('RX', `收到键盘状态包 (${u8.length} 字节): ${Array.from(u8.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join(' ')}`);
+            }
+          } catch (err) {
+            addLog('WebHID', `读取状态: ${err.message} (部分固件采用单向推送，不影响配置下发)`, 'info');
+          }
+        }
+
+        // 下发灯光配置 (Report ID 0x06)
+        async function applyLighting() {
+          if (!hidDevice || !connected.value) {
+            alert('请先连接键盘！');
+            return;
+          }
+
+          const mode = currentModeObj.value;
+          const modeCode = mode ? mode.code : 1;
+          const spd = speed.value;
+          const brt = brightness.value;
+          const colorObj = presetColors[selectedColorIndex.value];
+          const col = colorObj ? colorObj.hwCode : selectedColorIndex.value;
+
+          addLog('TX', `配置灯光: 模式 [${mode?.name || modeCode}], 亮度 ${brt}, 速度 ${spd}, 颜色 [${colorObj?.name || col}] (硬件码 0x${col.toString(16).padStart(2, '0')})`, 'tx');
+
+          try {
+            // 构建 1032 字节的 BYK916 完整参数包
+            const payload = new Uint8Array(1032);
+            
+            // 报文头部 (15 字节)
+            const header = [0x03, 0xb6, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x5a, 0xa5];
+            payload.set(header, 0);
+
+            // ParamsHeader: [0x03, 0x03]
+            payload[15] = 0x03;
+            payload[16] = 0x03;
+            // Debounce
+            payload[17] = 0x05;
+            payload[18] = 0x00;
+            // Custom flag
+            payload[19] = (selectedModeId.value === 21) ? 0x01 : 0x00;
+            // 模式编号
+            payload[20] = (selectedModeId.value === 22) ? 0x00 : modeCode;
+            // MiscHeader
+            payload.set([0x20, 0x00, 0x00, 0x00, 0x00, 0x00], 21);
+            // Sidelight, Halo
+            payload.set([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff], 27);
+
+            // 填充各模式参数
+            const appearance = (spd * 16) + brt;
+            for (let i = 0; i < 29; i++) {
+              payload[37 + i * 2] = col;
+              payload[37 + i * 2 + 1] = appearance;
+            }
+
+            // 尾部校验串
+            const suffix = [
+              0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04,
+              0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x00, 0x01, 0x01, 0x01,
+              0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+              0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+              0x00, 0x5a, 0xa5
+            ];
+            payload.set(suffix, 95);
+
+            // 通过 WebHID 发送 Feature Report 0x06
+            await hidDevice.sendFeatureReport(0x06, payload);
+            addLog('TX', `灯效数据下发完成 (Report 0x06: 1032 bytes) ✓`, 'info');
+          } catch (err) {
+            console.error(err);
+            addLog('TX', `灯光配置失败: ${err.message}`, 'error');
+          }
+        }
+
+        function onParamChange() {
+          if (autoSync.value && connected.value) {
+            applyLighting();
+          }
+        }
+
+        function selectLightMode(m) {
+          selectedModeId.value = m.id;
+          if (autoSync.value && connected.value) {
+            applyLighting();
+          }
+        }
+
+        function selectPresetColor(idx) {
+          selectedColorIndex.value = idx;
+          if (autoSync.value && connected.value) {
+            applyLighting();
+          }
+        }
+
+        function selectKey(k, event) {
+          playKeySound();
+          const id = k.id;
+          const isMulti = isMultiSelectMode.value || event?.ctrlKey || event?.metaKey || event?.shiftKey;
+
+          if (isMulti) {
+            // 多选模式：点击切换该键选中状态 (再次点击取消选中)
+            if (selectedKeyIds.value.has(id)) {
+              selectedKeyIds.value.delete(id);
+            } else {
+              selectedKeyIds.value.add(id);
+            }
+          } else {
+            // 普通模式：如果已选中该键且只选中了它，再次点击则取消选中！
+            if (selectedKeyIds.value.size === 1 && selectedKeyIds.value.has(id)) {
+              selectedKeyIds.value.clear();
+            } else {
+              // 否则单选该按键
+              selectedKeyIds.value.clear();
+              selectedKeyIds.value.add(id);
+            }
+          }
+        }
+
+        function clearSelection() {
+          selectedKeyIds.value.clear();
+        }
+
+        function selectAllKeys() {
+          keys.value.forEach(k => selectedKeyIds.value.add(k.id));
+        }
+
+        function selectKeyGroup(group) {
+          selectedKeyIds.value.clear();
+          if (group === 'f') {
+            keys.value.filter(k => /^F\d+$/.test(k.label) || k.label === 'Esc').forEach(k => selectedKeyIds.value.add(k.id));
+          } else if (group === 'num') {
+            keys.value.filter(k => k.label.startsWith('Num') || (k.col >= 85)).forEach(k => selectedKeyIds.value.add(k.id));
+          } else if (group === 'arrow') {
+            keys.value.filter(k => ['Up', 'Down', 'Left', 'Right'].includes(k.label)).forEach(k => selectedKeyIds.value.add(k.id));
+          } else if (group === 'alpha') {
+            keys.value.filter(k => /^[A-Z]$/.test(k.label)).forEach(k => selectedKeyIds.value.add(k.id));
+          }
+        }
+
+        function assignFunction(fn) {
+          const count = selectedCount.value;
+          if (count === 0) {
+            alert('请先在上方键盘模型中点击选择一个或多个按键！');
+            return;
+          }
+          const names = selectedLabelsText.value;
+          addLog('Remap', `批量为 [${count}] 个按键 (${names}) 映射功能: [${fn.name}] (Code: 0x${fn.code.toString(16)})`);
+          alert(`已为选中的 ${count} 个按键 [${names}] 成功绑定为: ${fn.name}！`);
+        }
+
+        // 键盘按键视觉样式计算
+        function getKeyFill(k) {
+          if (pressedKeys.value[k.eventCode]) return '#10b981'; // 实时击键高亮 (翠绿色)
+          if (isKeySelected(k)) return '#0284c7'; // 鼠标选中 (天空蓝)
+          if (testedKeys.value[k.eventCode]) return '#1e293b'; // 已经测试过的按键
+          return '#1e2536'; // 默认键帽
+        }
+
+        function getKeyStroke(k) {
+          if (pressedKeys.value[k.eventCode]) return '#34d399';
+          if (isKeySelected(k)) return '#38bdf8';
+          if (testedKeys.value[k.eventCode]) return '#334155';
+          return '#2d3748';
+        }
+
+        function getKeyTextColor(k) {
+          if (pressedKeys.value[k.eventCode] || isKeySelected(k)) return '#ffffff';
+          return '#cbd5e1';
+        }
+
+        function getKeyFontSize(k) {
+          if (k.label.length >= 7) return 7;
+          if (k.label.length >= 5) return 8;
+          if (k.label.length >= 3) return 9.5;
+          return 11;
+        }
+
+        function formatLabel(lbl) {
+          if (lbl === 'Backspace') return '⌫';
+          if (lbl === 'CapsLock') return 'Caps';
+          if (lbl === 'LShift' || lbl === 'RShift') return 'Shift';
+          if (lbl === 'LCtrl' || lbl === 'Rcrtl') return 'Ctrl';
+          if (lbl === 'LAlt' || lbl === 'RAlt') return 'Alt';
+          if (lbl === 'LWin') return 'Win';
+          if (lbl === 'Enter') return '↵';
+          if (lbl === 'Up') return '▲';
+          if (lbl === 'Down') return '▼';
+          if (lbl === 'Left') return '◀';
+          if (lbl === 'Right') return '▶';
+          if (lbl === 'Space') return '——';
+          return lbl;
+        }
+
+        function resetTestState() {
+          testedKeys.value = {};
+          keystrokeCount.value = 0;
+        }
+
+        // 全局键盘敲击监听
+        function handleKeyDown(e) {
+          const code = e.code;
+          if (!pressedKeys.value[code]) {
+            keystrokeCount.value++;
+            playKeySound();
+          }
+          pressedKeys.value[code] = true;
+          testedKeys.value[code] = true;
+        }
+
+        function handleKeyUp(e) {
+          const code = e.code;
+          delete pressedKeys.value[code];
+        }
+
+        onMounted(() => {
+          window.addEventListener('keydown', handleKeyDown);
+          window.addEventListener('keyup', handleKeyUp);
+          addLog('System', '迈从 K980 WebHID 控制中心已就绪');
+        });
+
+        onUnmounted(() => {
+          window.removeEventListener('keydown', handleKeyDown);
+          window.removeEventListener('keyup', handleKeyUp);
+          if (hidDevice) disconnectDevice();
+        });
+
+        return {
+          connected,
+          isConnecting,
+          deviceName,
+          activeTab,
+          audioFeedback,
+          autoSync,
+          keys,
+          isMultiSelectMode,
+          selectedKeyIds,
+          selectedCount,
+          selectedKeysList,
+          selectedLabelsText,
+          firstSelectedKey,
+          isKeySelected,
+          selectKeyGroup,
+          selectAllKeys,
+          clearSelection,
+          pressedKeys,
+          testedKeys,
+          keystrokeCount,
+          lightModes,
+          selectedModeId,
+          brightness,
+          speed,
+          presetColors,
+          selectedColorIndex,
+          currentModeObj,
+          mediaKeys,
+          systemKeys,
+          mouseKeys,
+          logs,
+          connectDevice,
+          disconnectDevice,
+          applyLighting,
+          onParamChange,
+          selectLightMode,
+          selectPresetColor,
+          selectKey,
+          assignFunction,
+          getKeyFill,
+          getKeyStroke,
+          getKeyTextColor,
+          getKeyFontSize,
+          formatLabel,
+          resetTestState,
+          clearLogs
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
