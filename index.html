@@ -170,6 +170,77 @@
       color: #0369a1 !important;
     }
 
+    /* 顶部未连接欢迎提示横幅 (自适应浅色与深色) */
+    html.dark .welcome-banner {
+      background: linear-gradient(135deg, rgba(15, 23, 42, 0.85) 0%, rgba(8, 47, 73, 0.65) 50%, rgba(15, 23, 42, 0.85) 100%);
+      border: 1px solid rgba(6, 182, 212, 0.35);
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+    }
+    html.dark .welcome-icon {
+      background: rgba(6, 182, 212, 0.15);
+      border: 1px solid rgba(6, 182, 212, 0.3);
+      color: #22d3ee;
+    }
+    html.dark .welcome-title {
+      color: #e0f2fe;
+    }
+    html.dark .welcome-desc {
+      color: #94a3b8;
+    }
+    html.dark .welcome-desc b {
+      color: #38bdf8;
+    }
+    html.dark .welcome-btn {
+      background: linear-gradient(to right, #06b6d4, #2563eb);
+      color: #ffffff;
+      box-shadow: 0 4px 14px rgba(6, 182, 212, 0.3);
+    }
+    html.dark .welcome-btn:hover {
+      background: linear-gradient(to right, #22d3ee, #3b82f6);
+    }
+
+    /* 浅色模式下的欢迎提示横幅 - 纯净明亮、高对比度、告别灰暗模糊 */
+    html:not(.dark) .welcome-banner {
+      background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 50%, #f0fdf4 100%) !important;
+      border: 1px solid #bae6fd !important;
+      box-shadow: 0 4px 15px -2px rgba(6, 182, 212, 0.08) !important;
+    }
+    html:not(.dark) .welcome-icon {
+      background: #ffffff !important;
+      border: 1px solid #bae6fd !important;
+      color: #0284c7 !important;
+      box-shadow: 0 2px 5px rgba(2, 132, 199, 0.08) !important;
+    }
+    html:not(.dark) .welcome-title {
+      color: #0c4a6e !important; /* 浓郁深天蓝，对比度极佳 */
+    }
+    html:not(.dark) .welcome-desc {
+      color: #0369a1 !important; /* 清晰天青色正文 */
+    }
+    html:not(.dark) .welcome-desc b {
+      color: #0f172a !important; /* 组合键纯黑粗体强调 */
+    }
+    html:not(.dark) .welcome-btn {
+      background: linear-gradient(to right, #0284c7, #2563eb) !important;
+      color: #ffffff !important;
+      box-shadow: 0 4px 12px rgba(2, 132, 199, 0.25) !important;
+    }
+    html:not(.dark) .welcome-btn:hover {
+      background: linear-gradient(to right, #0369a1, #1d4ed8) !important;
+    }
+
+    /* 浅色模式下常见提示条文字高对比度强化 */
+    html:not(.dark) .text-cyan-200 { color: #0c4a6e !important; }
+    html:not(.dark) .text-cyan-300 { color: #0369a1 !important; }
+    html:not(.dark) .text-cyan-400 { color: #0284c7 !important; }
+    html:not(.dark) .text-cyan-400\/80 { color: #0369a1 !important; }
+    html:not(.dark) .text-cyan-400\/90 { color: #0284c7 !important; }
+    html:not(.dark) .text-amber-400\/90 { color: #b45309 !important; }
+    html:not(.dark) .border-amber-900\/40 { border-color: #fde68a !important; }
+    html:not(.dark) .border-cyan-900\/40 { border-color: #bae6fd !important; }
+    html:not(.dark) .border-cyan-800\/50 { border-color: #bae6fd !important; }
+    html:not(.dark) .border-cyan-800 { border-color: #7dd3fc !important; }
+
     /* Keyboard stage background */
     .kb-canvas-wrapper {
       background: var(--kb-canvas-bg);
@@ -303,18 +374,18 @@
     <!-- 主要工作区 -->
     <main class="flex-1 max-w-7xl w-full mx-auto p-6 space-y-6">
       
-      <!-- 提示横条 (未连接时显示) -->
-      <div v-if="!connected" class="bg-gradient-to-r from-blue-950/40 via-cyan-950/30 to-indigo-950/40 border border-cyan-900/40 rounded-2xl p-4 flex items-center justify-between shadow-xl">
+      <!-- 提示横条 (未连接时显示，自适应浅色与深色) -->
+      <div v-if="!connected" class="welcome-banner rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg transition-colors">
         <div class="flex items-center space-x-3.5">
-          <div class="p-2.5 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 text-xl">
+          <div class="welcome-icon p-2.5 rounded-xl text-xl shrink-0 flex items-center justify-center">
             💡
           </div>
           <div>
-            <div class="text-sm font-semibold text-cyan-200">欢迎使用迈从 K980 WebHID 驱动</div>
-            <div class="text-xs text-cyan-400/80 mt-0.5">请使用 Type-C 数据线直连电脑，并按组合键 <b>FN + T</b> 切换至有线模式（右上角指示灯白灯常亮），点击右上角「连接键盘」授权即可！</div>
+            <div class="welcome-title text-sm font-bold">欢迎使用迈从 K980 WebHID 驱动</div>
+            <div class="welcome-desc text-xs mt-0.5">请使用 Type-C 数据线直连电脑，并按组合键 <b>FN + T</b> 切换至有线模式（右上角指示灯白灯常亮），点击右上角「连接键盘」授权即可！</div>
           </div>
         </div>
-        <button @click="connectDevice" class="px-4 py-1.5 text-xs font-semibold rounded-lg bg-cyan-500 text-gray-950 hover:bg-cyan-400 transition">
+        <button @click="connectDevice" class="welcome-btn px-4 py-2 text-xs font-semibold rounded-xl transition shadow active:scale-95 shrink-0">
           立即连接
         </button>
       </div>
