@@ -1,4 +1,4 @@
-const K980_KEYS = [
+export const K980_KEYS = [
   {
     "id": "K1",
     "label": "Esc",
@@ -1355,7 +1355,7 @@ const K980_KEYS = [
     "code3": "0x00",
     "col": 106,
     "row": 101,
-    "eventCode": "Enter"
+    "eventCode": "NumpadEnter"
   },
   {
     "id": "K97",

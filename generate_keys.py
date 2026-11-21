@@ -24,8 +24,11 @@ code_map = {
 
 for k in keys:
     lbl = k['label']
-    k['eventCode'] = code_map.get(lbl, lbl)
+    if k.get('id') == 'K96' or k.get('code2') == '0xFD':
+        k['eventCode'] = 'NumpadEnter'
+    else:
+        k['eventCode'] = code_map.get(lbl, lbl)
 
 with open('keys.js', 'w', encoding='utf-8') as f:
-    f.write('const K980_KEYS = ' + json.dumps(keys, indent=2, ensure_ascii=False) + ';\n')
+    f.write('export const K980_KEYS = ' + json.dumps(keys, indent=2, ensure_ascii=False) + ';\n')
 print('keys.js created successfully!')
