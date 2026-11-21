@@ -7,16 +7,13 @@ import {
   REPORT_ID_DATA,
   LIGHTING_PAYLOAD_SIZE,
   stripLeadingReportId,
-  parseBatteryPayload,
   buildLightingPayload,
   parseConfigPayload,
   inspectDeviceCollections,
   formatDescriptorSummary,
   findBestConfigDevice,
   getFeatureReportLength,
-  isWiredUsbDevice,
   createHidQueue,
-  queryBatteryProtocol,
   readKeyboardParamsProtocol
 } from '../src/protocol/byk916.js';
 
@@ -75,34 +72,6 @@ const FULL_CONFIG_COLLECTIONS = [
   }
 ];
 
-const WIRED_K980_COLLECTIONS = [
-  {
-    usagePage: 0xff00,
-    usage: 0x01,
-    featureReports: [
-      { reportId: 0x05, items: [{ reportSize: 8, reportCount: 5 }] },
-      { reportId: 0x06, items: [{ reportSize: 8, reportCount: 1031 }] }
-    ],
-    inputReports: [],
-    outputReports: []
-  }
-];
-
-const WIRELESS_24G_COLLECTIONS = [
-  {
-    usagePage: 0xff00,
-    usage: 0x01,
-    featureReports: [
-      { reportId: 0x05, items: [{ reportSize: 8, reportCount: 7 }] },
-      { reportId: 0x06, items: [{ reportSize: 8, reportCount: 1031 }] }
-    ],
-    inputReports: [
-      { reportId: 0x05, items: [{ reportSize: 8, reportCount: 7 }] }
-    ],
-    outputReports: []
-  }
-];
-
 test('stripLeadingReportId handles DataView byteOffset and Feature/Input distinction', () => {
   const view05 = makeDataViewWithOffset([0x05, 0x10, 0x3c, 0x00]);
   assert.deepEqual(Array.from(stripLeadingReportId(view05, 0x05, true)), [0x10, 0x3c, 0x00]);
@@ -112,36 +81,6 @@ test('stripLeadingReportId handles DataView byteOffset and Feature/Input distinc
 
   const unprefixed = makeDataViewWithOffset([0x11, 0x55, 0x00]);
   assert.deepEqual(Array.from(stripLeadingReportId(unprefixed, 0x05, true)), [0x11, 0x55, 0x00]);
-});
-
-test('parseBatteryPayload parses wired, charging, 0x10 0x00 boundary, wireless, and unknown frames', () => {
-  const full = parseBatteryPayload(new Uint8Array([0x10, 0x01, 0x00]));
-  assert.equal(full.recognized, true);
-  assert.equal(full.powerMode, 'wired');
-  assert.equal(full.isCharging, false);
-  assert.equal(full.batteryLevel, 100);
-
-  const charging = parseBatteryPayload(new Uint8Array([0x10, 0x4b]));
-  assert.equal(charging.recognized, true);
-  assert.equal(charging.powerMode, 'wired');
-  assert.equal(charging.isCharging, true);
-  assert.equal(charging.batteryLevel, 75);
-
-  const zeroCharging = parseBatteryPayload(new Uint8Array([0x10, 0x00]));
-  assert.equal(zeroCharging.recognized, true);
-  assert.equal(zeroCharging.powerMode, 'wired');
-  assert.equal(zeroCharging.isCharging, true);
-  assert.equal(zeroCharging.batteryLevel, null);
-
-  const wireless = parseBatteryPayload(new Uint8Array([0x11, 0x32]));
-  assert.equal(wireless.recognized, true);
-  assert.equal(wireless.powerMode, 'wireless');
-  assert.equal(wireless.isCharging, false);
-  assert.equal(wireless.batteryLevel, 50);
-
-  assert.equal(parseBatteryPayload(new Uint8Array([0x11, 0x99])).recognized, false);
-  assert.equal(parseBatteryPayload(new Uint8Array([0x03, 0xb6])).recognized, false);
-  assert.equal(parseBatteryPayload(new Uint8Array([0x10])).recognized, false);
 });
 
 test('buildLightingPayload builds valid 1031B packet and safely preserves validated basePayload fields', () => {
@@ -269,20 +208,6 @@ test('inspectDeviceCollections, getFeatureReportLength, and findBestConfigDevice
   assert.equal(getFeatureReportLength(vendorConfig, REPORT_ID_DATA, 100), 1031);
   assert.equal(getFeatureReportLength(stdKeyboard, REPORT_ID_CMD, 7), 7);
 
-  const wiredK980 = makeFakeDevice({
-    vendorId: VENDOR_ID,
-    productId: PRODUCT_ID,
-    collections: WIRED_K980_COLLECTIONS
-  });
-  const wireless24g = makeFakeDevice({
-    vendorId: VENDOR_ID,
-    productId: 0x0050,
-    collections: WIRELESS_24G_COLLECTIONS
-  });
-  assert.equal(isWiredUsbDevice(wiredK980), true);
-  assert.equal(isWiredUsbDevice(wireless24g), false);
-  assert.equal(isWiredUsbDevice(vendorConfig), false);
-
   const chosen = findBestConfigDevice([stdKeyboard, vendorConfig]);
   assert.equal(chosen, vendorConfig);
   assert.equal(findBestConfigDevice([]), null);
@@ -314,115 +239,6 @@ test('createHidQueue executes tasks strictly sequentially and isolates errors', 
   await assert.rejects(t2, /boom/);
   assert.equal(await t3, 'ok3');
   assert.deepEqual(events, ['t1:start', 't1:end', 't2:start', 't3:start', 't3:end']);
-});
-
-test('queryBatteryProtocol scenario 1: FeatureReport 0x05 succeeds with Report ID stripped', async () => {
-  let sent = null;
-  const device = makeFakeDevice({
-    collections: FULL_CONFIG_COLLECTIONS,
-    sendFeatureReport: async (reportId, data) => {
-      sent = { reportId, data: Array.from(data) };
-    },
-    receiveFeatureReport: async (reportId) => {
-      assert.equal(reportId, 0x05);
-      return makeDataViewWithOffset([0x05, 0x11, 0x50, 0x00, 0x00, 0x00, 0x00, 0x00], 1);
-    }
-  });
-
-  const res = await queryBatteryProtocol({ device, queue: createHidQueue() });
-  assert.equal(sent.reportId, 0x05);
-  assert.equal(sent.data.length, 7);
-  assert.equal(sent.data[0], 0x90);
-  assert.equal(res.ok, true);
-  assert.equal(res.source, 'FeatureReport 0x05');
-  assert.equal(res.powerMode, 'wireless');
-  assert.equal(res.batteryLevel, 80);
-});
-
-test('queryBatteryProtocol scenario 2a: wired K980 skips 0x90 probe and returns honest wired status', async () => {
-  let sendCalled = false;
-  let receiveCalled = false;
-  const device = makeFakeDevice({
-    vendorId: VENDOR_ID,
-    productId: PRODUCT_ID,
-    collections: WIRED_K980_COLLECTIONS,
-    sendFeatureReport: async () => {
-      sendCalled = true;
-    },
-    receiveFeatureReport: async () => {
-      receiveCalled = true;
-      return new DataView(new ArrayBuffer(0));
-    }
-  });
-
-  const res = await queryBatteryProtocol({ device, queue: createHidQueue() });
-  assert.equal(sendCalled, false);
-  assert.equal(receiveCalled, false);
-  assert.equal(res.ok, true);
-  assert.equal(res.wiredOnly, true);
-  assert.equal(res.powerMode, 'wired');
-  assert.equal(res.batteryLevel, null);
-  assert.ok(res.statusText.includes('USB 有线'));
-});
-
-test('queryBatteryProtocol scenario 2b: 2.4G wireless receiver does NOT fall back to Report 0x06 when 0x05 fails', async () => {
-  const calledReports = [];
-  const device = makeFakeDevice({
-    vendorId: VENDOR_ID,
-    productId: 0x0050,
-    collections: WIRELESS_24G_COLLECTIONS,
-    receiveFeatureReport: async (reportId) => {
-      calledReports.push(reportId);
-      throw new Error('Failed to receive the feature report.');
-    }
-  });
-
-  const res = await queryBatteryProtocol({ device, queue: createHidQueue() });
-  assert.equal(res.ok, false);
-  assert.deepEqual(calledReports, [0x05]);
-  assert.equal(res.attempts.length, 2);
-  assert.ok(res.hint.includes('2.4G'));
-});
-
-test('queryBatteryProtocol scenario 3: adopts InputReport sent in response to 0x90', async () => {
-  let receiveCalled = false;
-  const device = makeFakeDevice({
-    collections: FULL_CONFIG_COLLECTIONS,
-    sendFeatureReport: async () => {
-      setTimeout(() => {
-        device.dispatchInputReport(0x05, [0x10, 0x01, 0x00, 0x00]);
-      }, 8);
-    },
-    receiveFeatureReport: async () => {
-      receiveCalled = true;
-      throw new Error('should not be needed');
-    }
-  });
-
-  const res = await queryBatteryProtocol({ device, queue: createHidQueue() });
-  assert.equal(res.ok, true);
-  assert.equal(res.source, 'InputReport 0x05');
-  assert.equal(res.batteryLevel, 100);
-  assert.equal(res.isCharging, false);
-  assert.equal(receiveCalled, false);
-});
-
-test('queryBatteryProtocol scenario 4: returns structured diagnostic failure when 0x05 channel fails on 2.4G receiver', async () => {
-  const device = makeFakeDevice({
-    vendorId: VENDOR_ID,
-    productId: 0x0050,
-    collections: WIRELESS_24G_COLLECTIONS,
-    receiveFeatureReport: async () => {
-      throw new Error('Failed to receive the feature report.');
-    }
-  });
-
-  const res = await queryBatteryProtocol({ device, queue: createHidQueue() });
-  assert.equal(res.ok, false);
-  assert.ok(res.descriptorSummary.includes('0x05(7B)'));
-  assert.ok(res.descriptorSummary.includes('0x06(1031B)'));
-  assert.ok(res.hint.includes('2.4G'));
-  assert.equal(res.attempts.length, 2);
 });
 
 test('readKeyboardParamsProtocol queries 0x83 0xb6 and parses 1032B FeatureReport 0x06 response', async () => {

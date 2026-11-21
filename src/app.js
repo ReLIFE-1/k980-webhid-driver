@@ -18,9 +18,7 @@ import {
   formatDescriptorSummary,
   findBestConfigDevice,
   getFeatureReportLength,
-  parseBatteryPayload,
   createHidQueue,
-  queryBatteryProtocol,
   buildLightingPayload,
   readKeyboardParamsProtocol
 } from './protocol/byk916.js';
@@ -57,14 +55,12 @@ if (typeof window.Vue === 'undefined') {
 
       const audioFeedback = ref(getJsonStorage('k980_audio_feedback', true));
       const autoSync = ref(getJsonStorage('k980_auto_sync', true));
-      const autoPollBattery = ref(getJsonStorage('k980_auto_poll_battery', true));
       const interceptShortcuts = ref(getJsonStorage('k980_intercept_shortcuts', false));
       const keycapTheme = ref(getStorage('k980_keycap_theme', 'retro'));
       const themeMode = ref(getStorage('k980_theme_mode', 'system'));
 
       watch(audioFeedback, (v) => setJsonStorage('k980_audio_feedback', v));
       watch(autoSync, (v) => setJsonStorage('k980_auto_sync', v));
-      watch(autoPollBattery, (v) => setJsonStorage('k980_auto_poll_battery', v));
       watch(interceptShortcuts, (v) => setJsonStorage('k980_intercept_shortcuts', v));
       watch(keycapTheme, (v) => setStorage('k980_keycap_theme', v));
 
@@ -129,18 +125,7 @@ if (typeof window.Vue === 'undefined') {
       const capsLockActive = ref(false);
       const numLockActive = ref(true);
 
-      // 电量与固件状态监控（未读到真实数据时不虚报 100%）
-      const batteryLevel = ref(null);
-      const isCharging = ref(false);
-      const powerMode = ref('unknown');
-      const powerStatusText = ref('未连接');
-      const isQueryingBattery = ref(false);
-      const lastReportTime = ref('');
-      const batteryFailureCount = ref(0);
-      const batteryQueryPaused = ref(false);
-      const lastBatteryDiagnostic = ref(null);
-      let batteryPollTimer = null;
-
+      // 固件静态参考与 HID 上报监控
       const firmwareVer = ref('v22 (Cfg.ini 静态基准)');
       const inputReportCount = ref(0);
       const inputReportsList = ref([]);
@@ -244,92 +229,13 @@ if (typeof window.Vue === 'undefined') {
         keyAudio.play();
       }
 
-      function applyBatteryResult(parsed) {
-        if (!parsed || !parsed.recognized) return;
-        lastReportTime.value = parsed.wiredOnly
-          ? '有线模式免轮询'
-          : new Date().toLocaleTimeString();
-        powerMode.value = parsed.powerMode;
-        isCharging.value = parsed.isCharging;
-        batteryLevel.value = parsed.batteryLevel;
-        powerStatusText.value = parsed.statusText;
-        batteryFailureCount.value = 0;
-        batteryQueryPaused.value = false;
-      }
-
-      async function queryBattery(options = {}) {
-        const manual = Boolean(options?.manual);
-        const forceProbe = Boolean(options?.forceProbe);
-        if (!hidDevice || !connected.value) return;
-        if (isQueryingBattery.value) return;
-
-        if (manual) {
-          batteryFailureCount.value = 0;
-          batteryQueryPaused.value = false;
-        }
-
-        isQueryingBattery.value = true;
-        try {
-          const result = await queryBatteryProtocol({
-            device: hidDevice,
-            queue: hidQueue,
-            forceProbe,
-            onLog: addLog
-          });
-
-          if (result.ok) {
-            applyBatteryResult(result);
-            lastBatteryDiagnostic.value = {
-              ok: true,
-              wiredOnly: Boolean(result.wiredOnly),
-              hint: result.hint || '',
-              source: result.source,
-              descriptorSummary: result.descriptorSummary,
-              attempts: result.attempts
-            };
-          } else {
-            batteryFailureCount.value += 1;
-            lastBatteryDiagnostic.value = {
-              ok: false,
-              descriptorSummary: result.descriptorSummary,
-              attempts: result.attempts,
-              hint: result.hint
-            };
-            powerStatusText.value = '电量读取受限（点击查看诊断）';
-
-            if (batteryFailureCount.value >= 3 && !batteryQueryPaused.value) {
-              batteryQueryPaused.value = true;
-              addLog(
-                'Power',
-                '电量查询连续失败 3 次，已自动暂停 15 秒定时轮询。可检查有线模式或关闭官方驱动后点击「立即查询电量」重试。',
-                'info'
-              );
-              showToast('电量查询连续失败 3 次，已自动暂停轮询', 'warning');
-            }
-          }
-        } finally {
-          isQueryingBattery.value = false;
-        }
-      }
-
       function handleInputReport(event) {
         const { reportId, data } = event;
         const u8 = toUint8Array(data);
 
         let desc = '';
-        const parsedBattery = parseBatteryPayload(u8);
-        if (reportId === REPORT_ID_CMD || parsedBattery.recognized) {
-          if (parsedBattery.recognized) {
-            desc = '电源/电池状态帧';
-            applyBatteryResult(parsedBattery);
-            addLog(
-              'Power',
-              `[InputReport 0x${reportId.toString(16).padStart(2, '0')}] 状态: ${parsedBattery.statusText}, 原始码: [${parsedBattery.rawHex}]`,
-              'info'
-            );
-          } else if (reportId === REPORT_ID_CMD) {
-            desc = '状态/指令帧';
-          }
+        if (reportId === REPORT_ID_CMD) {
+          desc = '状态/指令帧';
         } else if (reportId === REPORT_ID_INPUT_KEY) {
           desc = '按键/状态变化帧';
         }
@@ -450,14 +356,6 @@ if (typeof window.Vue === 'undefined') {
           collections: summary.collections
         };
 
-        batteryLevel.value = null;
-        isCharging.value = false;
-        powerMode.value = 'unknown';
-        powerStatusText.value = '正在查询...';
-        batteryFailureCount.value = 0;
-        batteryQueryPaused.value = false;
-        lastBatteryDiagnostic.value = null;
-
         addLog('WebHID', `设备连接成功: ${deviceName.value} (${vidHex}:${pidHex})`, 'info');
         addLog('WebHID', `当前接口描述符: ${descriptorSummary}`, 'info');
 
@@ -469,21 +367,7 @@ if (typeof window.Vue === 'undefined') {
           );
         }
 
-        // 先检测并初始化电量状态（有线模式自动跳过 0x90 以免干扰），再回读当前配置参数确保 0x06 管道就绪
-        await queryBattery({ manual: true });
         await readKeyboardParams();
-
-        if (batteryPollTimer) clearInterval(batteryPollTimer);
-        batteryPollTimer = setInterval(() => {
-          if (
-            connected.value &&
-            autoPollBattery.value &&
-            !batteryQueryPaused.value &&
-            !lastBatteryDiagnostic.value?.wiredOnly
-          ) {
-            queryBattery();
-          }
-        }, 15000);
 
         if (!silent) {
           showToast(`已连接 ${deviceName.value}`, 'success');
@@ -566,10 +450,6 @@ if (typeof window.Vue === 'undefined') {
         reason = '设备已断开连接',
         preserveInterfaces = false
       } = {}) {
-        if (batteryPollTimer) {
-          clearInterval(batteryPollTimer);
-          batteryPollTimer = null;
-        }
         if (paramDebounceTimer) {
           clearTimeout(paramDebounceTimer);
           paramDebounceTimer = null;
@@ -592,13 +472,6 @@ if (typeof window.Vue === 'undefined') {
           availableInterfaces.value = [];
           activeInterfaceIndex.value = 0;
         }
-        batteryLevel.value = null;
-        isCharging.value = false;
-        powerMode.value = 'unknown';
-        powerStatusText.value = '未连接';
-        batteryFailureCount.value = 0;
-        batteryQueryPaused.value = false;
-        lastBatteryDiagnostic.value = null;
         addLog('WebHID', reason);
         if (!silent) {
           showToast(reason, 'info');
@@ -609,9 +482,9 @@ if (typeof window.Vue === 'undefined') {
         if (hidDevice && event.device === hidDevice) {
           disconnectDevice({
             silent: true,
-            reason: '检测到键盘物理断开或已切换为无线模式'
+            reason: '检测到键盘已断开连接'
           });
-          showToast('键盘已断开连接（如切换至无线模式或拔线属正常现象）', 'warning', 4500);
+          showToast('键盘已断开连接（如需配置请确保处于 FN + T 有线模式）', 'warning', 4500);
         }
       }
 
@@ -788,16 +661,6 @@ if (typeof window.Vue === 'undefined') {
                 hex: formatHex(lastConfigPayload)
               }
             : null,
-          battery: {
-            level: batteryLevel.value,
-            isCharging: isCharging.value,
-            powerMode: powerMode.value,
-            statusText: powerStatusText.value,
-            lastReportTime: lastReportTime.value,
-            failureCount: batteryFailureCount.value,
-            paused: batteryQueryPaused.value,
-            diagnostic: lastBatteryDiagnostic.value
-          },
           recentLogs: logs.value.slice(-25),
           recentInputReports: inputReportsList.value.slice(0, 15).map((r) => ({
             time: r.time,
@@ -1111,20 +974,9 @@ if (typeof window.Vue === 'undefined') {
         mediaKeys,
         systemKeys,
         mouseKeys,
-        batteryLevel,
-        isCharging,
-        powerMode,
-        powerStatusText,
-        isQueryingBattery,
-        lastReportTime,
-        autoPollBattery,
-        batteryFailureCount,
-        batteryQueryPaused,
-        lastBatteryDiagnostic,
         firmwareVer,
         inputReportCount,
         inputReportsList,
-        queryBattery,
         clearInputReports,
         copyDiagnostics,
         logs,

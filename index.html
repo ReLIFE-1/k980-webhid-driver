@@ -129,48 +129,9 @@
           </span>
         </div>
 
-        <!-- 电量胶囊 (已连接时展示) -->
-        <div
-          v-if="connected"
-          @click="activeTab = 'power'; queryBattery({ manual: true })"
-          :title="lastBatteryDiagnostic?.wiredOnly ? 'USB 有线直连供电；查看实时电量百分比请切至 2.4G 接收器模式' : '点击查看电量与固件详情 / 刷新'"
-          class="cursor-pointer flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-white dark:bg-cyber-card border border-slate-200 dark:border-cyber-border hover:border-cyan-500/50 text-xs transition shadow-sm dark:shadow-none">
-          <div v-if="lastBatteryDiagnostic?.wiredOnly" class="flex items-center space-x-1.5">
-            <span class="text-sm leading-none">🔌</span>
-            <span class="font-mono font-bold text-cyan-700 dark:text-cyan-300">USB 直连</span>
-          </div>
-          <template v-else>
-            <div class="flex items-center space-x-1.5">
-              <span v-if="isCharging" class="text-amber-500 dark:text-amber-400 font-bold animate-pulse text-sm leading-none">⚡</span>
-              <div v-else class="w-5 h-2.5 rounded-sm border border-slate-400 dark:border-gray-400 p-0.5 flex items-center relative">
-                <div
-                  class="h-full rounded-sm transition-all duration-300"
-                  :class="batteryLevel === null ? 'bg-slate-400' : (batteryLevel >= 60 ? 'bg-emerald-500 dark:bg-emerald-400' : (batteryLevel >= 25 ? 'bg-amber-500 dark:bg-amber-400' : 'bg-red-500'))"
-                  :style="{ width: (batteryLevel === null ? 0 : batteryLevel) + '%' }"></div>
-                <div class="w-0.5 h-1 bg-slate-400 dark:bg-gray-400 absolute -right-1 top-0.5 rounded-r"></div>
-              </div>
-              <span
-                class="font-mono font-bold"
-                :class="batteryLevel === null && !isCharging ? 'text-slate-500 dark:text-gray-400' : (isCharging ? 'text-amber-600 dark:text-amber-300' : (batteryLevel >= 60 ? 'text-emerald-600 dark:text-emerald-400' : (batteryLevel >= 25 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400')))">
-                {{ batteryLevel === null ? (isCharging ? '充电中 --%' : '--%') : (isCharging ? (batteryLevel === 100 ? '已充满' : '充电中 ' + batteryLevel + '%') : (batteryLevel + '%')) }}
-              </span>
-            </div>
-            <span class="text-[10px] text-slate-500 dark:text-gray-400 border-l border-slate-200 dark:border-gray-700 pl-2 hidden sm:inline">
-              {{ powerMode === 'wired' ? 'USB供电' : (powerMode === 'wireless' ? '无线电池' : (batteryQueryPaused ? '读取暂停' : '待检测')) }}
-            </span>
-          </template>
-          <button
-            @click.stop="queryBattery({ manual: true })"
-            :disabled="isQueryingBattery"
-            class="text-slate-500 dark:text-gray-400 hover:text-cyan-600 dark:hover:text-cyan-300 transition"
-            title="立即刷新电量与供电状态">
-            <span :class="{'animate-spin inline-block': isQueryingBattery}">🔄</span>
-          </button>
-        </div>
-
         <button
           v-if="!connected"
-          @click="connectDevice"
+          @click="connectDevice()"
           :disabled="isConnecting"
           class="flex items-center space-x-1.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 dark:from-cyan-500 dark:to-blue-600 dark:hover:from-cyan-400 dark:hover:to-blue-500 text-white font-medium text-xs px-4 py-2 rounded-lg shadow-md shadow-cyan-500/20 transition active:scale-95 disabled:opacity-50">
           <span v-if="isConnecting">正在连接...</span>
@@ -204,8 +165,9 @@
           </div>
         </div>
         <button
-          @click="connectDevice"
-          class="px-4 py-2 text-xs font-semibold rounded-xl transition shadow active:scale-95 shrink-0 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white">
+          @click="connectDevice()"
+          :disabled="isConnecting"
+          class="px-4 py-2 text-xs font-semibold rounded-xl transition shadow active:scale-95 shrink-0 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white disabled:opacity-50">
           立即连接
         </button>
       </div>
@@ -530,13 +492,10 @@
           </button>
 
           <button
-            @click="activeTab = 'power'"
-            :class="activeTab === 'power' ? 'text-cyan-700 dark:text-cyan-400 border-cyan-600 dark:border-cyan-400 font-semibold' : 'text-slate-500 dark:text-gray-400 hover:text-slate-800 dark:hover:text-gray-200 border-transparent'"
+            @click="activeTab = 'diag'"
+            :class="activeTab === 'diag' ? 'text-cyan-700 dark:text-cyan-400 border-cyan-600 dark:border-cyan-400 font-semibold' : 'text-slate-500 dark:text-gray-400 hover:text-slate-800 dark:hover:text-gray-200 border-transparent'"
             class="pb-3 border-b-2 flex items-center space-x-2 transition whitespace-nowrap">
-            <span>⚡ 电量与固件监控</span>
-            <span v-if="connected" class="ml-1 px-1.5 py-0.5 rounded text-[10px] bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 font-mono">
-              {{ lastBatteryDiagnostic?.wiredOnly ? 'USB' : (isCharging ? '⚡充电' : (batteryLevel !== null ? batteryLevel + '%' : '--%')) }}
-            </span>
+            <span>🛡️ 设备与通道诊断</span>
           </button>
 
           <button
@@ -777,233 +736,108 @@
           </div>
         </div>
 
-        <!-- Tab 3: 电量与固件监控 -->
-        <div v-show="activeTab === 'power'" class="p-6 space-y-6">
-          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <!-- 卡片 1: 实时电量与供电状态看板 -->
-            <div class="bg-slate-50 dark:bg-gray-900/60 border border-slate-200 dark:border-gray-800 rounded-2xl p-5 space-y-4 shadow-sm dark:shadow-lg">
-              <div class="flex items-center justify-between border-b border-slate-200 dark:border-gray-800/80 pb-3">
-                <div class="flex items-center space-x-2">
-                  <span class="text-lg">🔋</span>
-                  <span class="text-sm font-semibold text-slate-900 dark:text-white">实时电池状态监测</span>
+        <!-- Tab 3: 设备与通道诊断 -->
+        <div v-show="activeTab === 'diag'" class="p-6 space-y-6">
+          <!-- 卡片 1: 固件版本与硬件主控诊断 -->
+          <div class="bg-slate-50 dark:bg-gray-900/60 border border-slate-200 dark:border-gray-800 rounded-2xl p-5 space-y-4 shadow-sm dark:shadow-lg">
+            <div class="flex items-center justify-between border-b border-slate-200 dark:border-gray-800/80 pb-3">
+              <div class="flex items-center space-x-2">
+                <span class="text-lg">🛡️</span>
+                <span class="text-sm font-semibold text-slate-900 dark:text-white">固件参考与硬件通道诊断</span>
+              </div>
+              <span
+                v-if="!connected"
+                class="px-2 py-0.5 rounded-full text-[10px] font-mono bg-slate-200 dark:bg-gray-800 text-slate-600 dark:text-gray-400 border border-slate-300 dark:border-gray-700">
+                ● 未连接设备
+              </span>
+              <span
+                v-else-if="deviceInfo?.hasConfigReports"
+                class="px-2 py-0.5 rounded-full text-[10px] font-mono bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                ● 已建立 WebHID 配置会话
+              </span>
+              <span
+                v-else
+                class="px-2 py-0.5 rounded-full text-[10px] font-mono bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                ● 非标准配置接口
+              </span>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+              <div class="p-3 rounded-xl bg-white dark:bg-gray-950/60 border border-slate-200 dark:border-gray-800">
+                <div class="text-slate-500 dark:text-gray-400">固件标定基准</div>
+                <div class="text-slate-900 dark:text-white font-mono font-bold text-sm mt-1 flex items-center flex-wrap gap-1.5">
+                  <span>{{ firmwareVer }}</span>
+                  <span class="text-[10px] text-slate-600 dark:text-gray-300 font-sans px-1.5 py-0.5 rounded bg-slate-100 dark:bg-gray-800 border border-slate-200 dark:border-gray-700">静态参考</span>
                 </div>
-                <div class="flex items-center space-x-2">
-                  <button
-                    @click="queryBattery({ manual: true })"
-                    :disabled="!connected || isQueryingBattery"
-                    class="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-white dark:bg-gray-800 hover:bg-slate-100 dark:hover:bg-gray-700 text-cyan-700 dark:text-cyan-400 text-xs border border-slate-200 dark:border-gray-700 transition disabled:opacity-50 active:scale-95">
-                    <span :class="{'animate-spin inline-block': isQueryingBattery}">🔄</span>
-                    <span>立即查询电量</span>
-                  </button>
+                <div class="text-[10px] text-slate-400 dark:text-gray-500 mt-0.5">来自官方 Cfg.ini KbFw=22，非实时读取</div>
+              </div>
+
+              <div class="p-3 rounded-xl bg-white dark:bg-gray-950/60 border border-slate-200 dark:border-gray-800">
+                <div class="text-slate-500 dark:text-gray-400">主控芯片方案 (MCU)</div>
+                <div class="text-cyan-700 dark:text-cyan-300 font-mono font-bold text-sm mt-1">SinoWealth BYK916</div>
+                <div class="text-[10px] text-slate-400 dark:text-gray-500 mt-0.5">中颖低功耗三模机械键盘主控</div>
+              </div>
+
+              <div class="p-3 rounded-xl bg-white dark:bg-gray-950/60 border border-slate-200 dark:border-gray-800">
+                <div class="text-slate-500 dark:text-gray-400">USB 硬件设备标识</div>
+                <div class="text-slate-800 dark:text-gray-200 font-mono text-xs mt-1">
+                  {{ connected && deviceInfo ? `VID: ${deviceInfo.vendorIdHex} · PID: ${deviceInfo.productIdHex}` : '等待 WebHID 授权' }}
+                </div>
+                <div class="text-[10px] text-slate-400 dark:text-gray-500 mt-0.5">
+                  {{ connected ? (deviceInfo?.productName || 'MCHOSE K980') : '目标设备 0x258A:0x0049' }}
                 </div>
               </div>
 
-              <!-- 电量展示卡 -->
-              <div class="flex items-center space-x-5 p-4 rounded-xl bg-white dark:bg-gray-950/60 border border-slate-200 dark:border-gray-800/50">
-                <div class="relative flex items-center justify-center shrink-0">
-                  <div
-                    class="w-20 h-20 rounded-2xl flex flex-col items-center justify-center border-2 transition-all shadow-inner"
-                    :class="lastBatteryDiagnostic?.wiredOnly
-                      ? 'border-cyan-400/70 bg-cyan-50 dark:border-cyan-500/50 dark:bg-cyan-500/10'
-                      : (batteryLevel === null && !isCharging
-                        ? 'border-slate-300 dark:border-gray-700 bg-slate-100 dark:bg-gray-900/40'
-                        : (isCharging
-                          ? 'border-amber-400/80 bg-amber-50 dark:bg-amber-500/10'
-                          : (batteryLevel >= 60 ? 'border-emerald-500/80 bg-emerald-50 dark:bg-emerald-500/10' : (batteryLevel >= 25 ? 'border-amber-500/80 bg-amber-50 dark:bg-amber-500/10' : 'border-red-500/80 bg-red-50 dark:bg-red-500/10'))))">
-                    <template v-if="lastBatteryDiagnostic?.wiredOnly">
-                      <span class="text-xl leading-none mb-1">🔌</span>
-                      <span class="text-sm font-black font-mono tracking-tight text-cyan-700 dark:text-cyan-300">USB</span>
-                    </template>
-                    <template v-else>
-                      <span v-if="isCharging" class="text-xs text-amber-600 dark:text-amber-400 font-bold leading-none mb-1">⚡ 充电</span>
-                      <span
-                        class="text-2xl font-black font-mono tracking-tight"
-                        :class="batteryLevel === null ? 'text-slate-500 dark:text-gray-400' : (isCharging ? 'text-amber-600 dark:text-amber-300' : (batteryLevel >= 60 ? 'text-emerald-600 dark:text-emerald-400' : (batteryLevel >= 25 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400')))">
-                        {{ batteryLevel === null ? '--' : batteryLevel }}<span class="text-xs font-normal">%</span>
-                      </span>
-                    </template>
-                  </div>
+              <div class="p-3 rounded-xl bg-white dark:bg-gray-950/60 border border-slate-200 dark:border-gray-800">
+                <div class="text-slate-500 dark:text-gray-400">Input Report 接收帧数</div>
+                <div class="text-emerald-600 dark:text-emerald-400 font-mono font-bold text-sm mt-1">{{ inputReportCount }} 帧</div>
+                <div class="text-[10px] text-slate-400 dark:text-gray-500 mt-0.5">
+                  {{ connected ? '实时中断事件监听中' : '连接后开启监听' }}
                 </div>
-
-                <div class="space-y-1.5 flex-1 min-w-0">
-                  <div class="text-sm font-bold text-slate-900 dark:text-gray-200 flex items-center space-x-2 flex-wrap">
-                    <span>{{ powerStatusText }}</span>
-                    <span v-if="isCharging" class="px-2 py-0.5 rounded-full text-[10px] bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-500/30">
-                      ⚡ 正在通过 USB 充电
-                    </span>
-                    <span v-if="batteryQueryPaused" class="px-2 py-0.5 rounded-full text-[10px] bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-500/30">
-                      已暂停轮询
-                    </span>
-                  </div>
-                  <div class="text-xs text-slate-600 dark:text-gray-400">
-                    供电模式:
-                    <span class="text-cyan-700 dark:text-cyan-300 font-medium">
-                      {{ powerMode === 'wired' ? 'USB 有线直连 / 适配器供电' : (powerMode === 'wireless' ? '内置锂电池无线供电' : '尚未检测到有效供电帧') }}
-                    </span>
-                  </div>
-                  <div class="w-full bg-slate-200 dark:bg-gray-800 rounded-full h-2.5 overflow-hidden mt-2">
-                    <div
-                      class="h-full rounded-full transition-all duration-500"
-                      :class="lastBatteryDiagnostic?.wiredOnly
-                        ? 'bg-gradient-to-r from-cyan-500 to-emerald-400'
-                        : (batteryLevel === null ? 'bg-slate-400' : (isCharging ? 'bg-gradient-to-r from-amber-500 to-yellow-400 animate-pulse' : (batteryLevel >= 60 ? 'bg-emerald-500 dark:bg-emerald-400' : (batteryLevel >= 25 ? 'bg-amber-500 dark:bg-amber-400' : 'bg-red-500'))))"
-                      :style="{ width: (lastBatteryDiagnostic?.wiredOnly ? 100 : (batteryLevel === null ? 0 : batteryLevel)) + '%' }"></div>
-                  </div>
-                  <div class="flex items-center justify-between text-[11px] text-slate-500 dark:text-gray-500 pt-1">
-                    <span>最后上报: {{ lastReportTime || '尚未接收' }}</span>
-                    <span class="flex items-center space-x-1.5">
-                      <input type="checkbox" id="autoPoll" v-model="autoPollBattery" class="rounded bg-white dark:bg-gray-800 border-slate-300 dark:border-gray-700 text-cyan-600 focus:ring-0">
-                      <label for="autoPoll" class="cursor-pointer text-slate-600 dark:text-gray-400 hover:text-slate-900 dark:hover:text-gray-300">自动轮询 (15s)</label>
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <!-- USB 有线模式供电说明（信息卡片，非错误告警） -->
-              <div
-                v-if="lastBatteryDiagnostic?.wiredOnly"
-                class="text-xs bg-sky-50 dark:bg-cyan-950/35 border border-sky-200 dark:border-cyan-800/60 text-sky-900 dark:text-cyan-100 p-3.5 rounded-xl space-y-1.5 leading-relaxed">
-                <div class="font-semibold flex items-center space-x-1.5 text-sky-950 dark:text-cyan-300">
-                  <span>🔌</span>
-                  <span>USB 有线模式说明（无需电量轮询）</span>
-                </div>
-                <p>
-                  当前设备工作于 <b>USB 有线直连模式 (0x258A:0x0049)</b>，键盘由 USB 总线持续供电。K980 固件仅在 <b>2.4G 无线接收器模式 (FN + R)</b> 下开放 <code>0x90</code> 电池百分比读取接口。
-                </p>
-                <p class="text-[11px] text-sky-800 dark:text-cyan-200/80">
-                  为避免有线模式下对固件端点造成 USB 控制传输阻塞 (STALL)，驱动已自动跳过 15 秒定时轮询，确保灯效下发通道始终畅通。
-                </p>
-              </div>
-
-              <!-- 电量查询失败诊断提示 -->
-              <div
-                v-else-if="lastBatteryDiagnostic && !lastBatteryDiagnostic.ok"
-                class="text-xs bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-amber-900 dark:text-amber-200 p-3.5 rounded-xl space-y-2">
-                <div class="font-semibold flex items-center justify-between">
-                  <span>⚠️ 电量查询诊断提示</span>
-                  <span v-if="batteryFailureCount > 0" class="font-mono text-[11px]">失败计数: {{ batteryFailureCount }}/3</span>
-                </div>
-                <p class="leading-relaxed">{{ lastBatteryDiagnostic.hint }}</p>
-                <div v-if="lastBatteryDiagnostic.attempts?.length" class="text-[11px] font-mono bg-white/70 dark:bg-black/40 rounded-lg p-2 space-y-0.5 text-slate-700 dark:text-gray-300">
-                  <div v-for="(att, i) in lastBatteryDiagnostic.attempts" :key="i">
-                    • {{ att.step }}: {{ att.ok ? (att.recognized ? '成功识别' : '已读取 [' + (att.payloadHex || att.rawHex || '空') + ']') : '失败 (' + att.error + ')' }}
-                  </div>
-                </div>
-              </div>
-
-              <!-- 电池说明提示 -->
-              <div class="text-xs text-slate-600 dark:text-gray-400 bg-white dark:bg-gray-950/40 p-3.5 rounded-xl border border-slate-200 dark:border-gray-800/40 space-y-1.5 leading-relaxed">
-                <div class="text-cyan-700 dark:text-cyan-400/90 font-semibold flex items-center space-x-1.5">
-                  <span>💡</span>
-                  <span>迈从 K980 电池与指示灯规范说明：</span>
-                </div>
-                <div>• 键盘内置 3.7V 锂电池，支持边充边用，Type-C 5V 安全输入。</div>
-                <div>• 当电量低于 3.5V ~ 3.2V 时，右上角指示灯将出现红灯快闪低电报警。</div>
-                <div>• 充满电后主控芯片转为微弱浮充或切断充电，指示灯恢复当前通道常亮状态。</div>
               </div>
             </div>
 
-            <!-- 卡片 2: 固件版本与硬件主控诊断 -->
-            <div class="bg-slate-50 dark:bg-gray-900/60 border border-slate-200 dark:border-gray-800 rounded-2xl p-5 space-y-4 shadow-sm dark:shadow-lg">
-              <div class="flex items-center justify-between border-b border-slate-200 dark:border-gray-800/80 pb-3">
-                <div class="flex items-center space-x-2">
-                  <span class="text-lg">🛡️</span>
-                  <span class="text-sm font-semibold text-slate-900 dark:text-white">固件参考与硬件通道诊断</span>
-                </div>
-                <span
-                  v-if="!connected"
-                  class="px-2 py-0.5 rounded-full text-[10px] font-mono bg-slate-200 dark:bg-gray-800 text-slate-600 dark:text-gray-400 border border-slate-300 dark:border-gray-700">
-                  ● 未连接设备
-                </span>
-                <span
-                  v-else-if="deviceInfo?.hasConfigReports"
-                  class="px-2 py-0.5 rounded-full text-[10px] font-mono bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
-                  ● 已建立 WebHID 配置会话
-                </span>
-                <span
-                  v-else
-                  class="px-2 py-0.5 rounded-full text-[10px] font-mono bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
-                  ● 非标准配置接口
+            <!-- 真实 HID 接口描述符状态 -->
+            <div class="bg-white dark:bg-gray-950/40 p-3.5 rounded-xl border border-slate-200 dark:border-gray-800/40 space-y-2 text-xs">
+              <div class="flex items-center justify-between gap-2 flex-wrap">
+                <span class="font-semibold text-slate-700 dark:text-gray-300">📡 HID 接口描述符与通道状态：</span>
+                <button
+                  @click="copyDiagnostics"
+                  class="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-gray-800 hover:bg-sky-50 dark:hover:bg-gray-700 text-cyan-700 dark:text-cyan-300 border border-slate-200 dark:border-gray-700 text-[11px] font-medium transition">
+                  📋 复制 HID 诊断信息
+                </button>
+              </div>
+              <div v-if="connected && availableInterfaces.length > 1" class="flex items-center justify-between gap-2 pt-1">
+                <label for="hid-interface-select" class="text-slate-600 dark:text-gray-400 shrink-0">• 切换 HID 接口:</label>
+                <select
+                  id="hid-interface-select"
+                  :value="activeInterfaceIndex"
+                  @change="switchInterface(Number($event.target.value))"
+                  class="flex-1 min-w-0 px-2 py-1 rounded-lg bg-slate-50 dark:bg-gray-900 border border-slate-200 dark:border-gray-700 text-slate-800 dark:text-gray-200 text-[11px] font-mono focus:outline-none focus:border-cyan-500">
+                  <option v-for="iface in availableInterfaces" :key="iface.index" :value="iface.index">
+                    {{ iface.label }}
+                  </option>
+                </select>
+              </div>
+              <div class="flex items-center justify-between text-slate-600 dark:text-gray-400">
+                <span>• Feature Report 0x06 (参数与灯效通道{{ deviceInfo?.report06Length ? ' · ' + deviceInfo.report06Length + 'B' : '' }})</span>
+                <span class="font-mono" :class="connected ? (deviceInfo?.hasConfigReports ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400') : 'text-slate-400 dark:text-gray-500'">
+                  {{ !connected ? '⏳ 待连接' : (deviceInfo?.hasConfigReports ? '✔️ 描述符已声明' : '⚠️ 未在当前接口声明') }}
                 </span>
               </div>
-
-              <div class="grid grid-cols-2 gap-3 text-xs">
-                <div class="p-3 rounded-xl bg-white dark:bg-gray-950/60 border border-slate-200 dark:border-gray-800">
-                  <div class="text-slate-500 dark:text-gray-400">固件标定基准</div>
-                  <div class="text-slate-900 dark:text-white font-mono font-bold text-sm mt-1 flex items-center flex-wrap gap-1.5">
-                    <span>{{ firmwareVer }}</span>
-                    <span class="text-[10px] text-slate-600 dark:text-gray-300 font-sans px-1.5 py-0.5 rounded bg-slate-100 dark:bg-gray-800 border border-slate-200 dark:border-gray-700">静态参考</span>
-                  </div>
-                  <div class="text-[10px] text-slate-400 dark:text-gray-500 mt-0.5">来自官方 Cfg.ini KbFw=22，非实时读取</div>
-                </div>
-
-                <div class="p-3 rounded-xl bg-white dark:bg-gray-950/60 border border-slate-200 dark:border-gray-800">
-                  <div class="text-slate-500 dark:text-gray-400">主控芯片方案 (MCU)</div>
-                  <div class="text-cyan-700 dark:text-cyan-300 font-mono font-bold text-sm mt-1">SinoWealth BYK916</div>
-                  <div class="text-[10px] text-slate-400 dark:text-gray-500 mt-0.5">中颖低功耗三模机械键盘主控</div>
-                </div>
-
-                <div class="p-3 rounded-xl bg-white dark:bg-gray-950/60 border border-slate-200 dark:border-gray-800">
-                  <div class="text-slate-500 dark:text-gray-400">USB 硬件设备标识</div>
-                  <div class="text-slate-800 dark:text-gray-200 font-mono text-xs mt-1">
-                    {{ connected && deviceInfo ? `VID: ${deviceInfo.vendorIdHex} · PID: ${deviceInfo.productIdHex}` : '等待 WebHID 授权' }}
-                  </div>
-                  <div class="text-[10px] text-slate-400 dark:text-gray-500 mt-0.5">
-                    {{ connected ? (deviceInfo?.productName || 'MCHOSE K980') : '目标设备 0x258A:0x0049' }}
-                  </div>
-                </div>
-
-                <div class="p-3 rounded-xl bg-white dark:bg-gray-950/60 border border-slate-200 dark:border-gray-800">
-                  <div class="text-slate-500 dark:text-gray-400">Input Report 接收帧数</div>
-                  <div class="text-emerald-600 dark:text-emerald-400 font-mono font-bold text-sm mt-1">{{ inputReportCount }} 帧</div>
-                  <div class="text-[10px] text-slate-400 dark:text-gray-500 mt-0.5">
-                    {{ connected ? '实时中断事件监听中' : '连接后开启监听' }}
-                  </div>
-                </div>
+              <div class="flex items-center justify-between text-slate-600 dark:text-gray-400">
+                <span>• Feature Report 0x05 (参数回读指令通道)</span>
+                <span class="font-mono" :class="connected ? (deviceInfo?.hasConfigReports ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400') : 'text-slate-400 dark:text-gray-500'">
+                  {{ !connected ? '⏳ 待连接' : (deviceInfo?.hasConfigReports ? '✔️ 描述符已声明' : '⚠️ 未在当前接口声明') }}
+                </span>
               </div>
-
-              <!-- 真实 HID 接口描述符状态 -->
-              <div class="bg-white dark:bg-gray-950/40 p-3.5 rounded-xl border border-slate-200 dark:border-gray-800/40 space-y-2 text-xs">
-                <div class="flex items-center justify-between gap-2 flex-wrap">
-                  <span class="font-semibold text-slate-700 dark:text-gray-300">📡 HID 接口描述符与通道状态：</span>
-                  <button
-                    @click="copyDiagnostics"
-                    class="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-gray-800 hover:bg-sky-50 dark:hover:bg-gray-700 text-cyan-700 dark:text-cyan-300 border border-slate-200 dark:border-gray-700 text-[11px] font-medium transition">
-                    📋 复制 HID 诊断信息
-                  </button>
-                </div>
-                <div v-if="connected && availableInterfaces.length > 1" class="flex items-center justify-between gap-2 pt-1">
-                  <label for="hid-interface-select" class="text-slate-600 dark:text-gray-400 shrink-0">• 切换 HID 接口:</label>
-                  <select
-                    id="hid-interface-select"
-                    :value="activeInterfaceIndex"
-                    @change="switchInterface(Number($event.target.value))"
-                    class="flex-1 min-w-0 px-2 py-1 rounded-lg bg-slate-50 dark:bg-gray-900 border border-slate-200 dark:border-gray-700 text-slate-800 dark:text-gray-200 text-[11px] font-mono focus:outline-none focus:border-cyan-500">
-                    <option v-for="iface in availableInterfaces" :key="iface.index" :value="iface.index">
-                      {{ iface.label }}
-                    </option>
-                  </select>
-                </div>
-                <div class="flex items-center justify-between text-slate-600 dark:text-gray-400">
-                  <span>• Feature Report 0x06 (参数与灯效通道{{ deviceInfo?.report06Length ? ' · ' + deviceInfo.report06Length + 'B' : '' }})</span>
-                  <span class="font-mono" :class="connected ? (deviceInfo?.hasConfigReports ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400') : 'text-slate-400 dark:text-gray-500'">
-                    {{ !connected ? '⏳ 待连接' : (deviceInfo?.hasConfigReports ? '✔️ 描述符已声明' : '⚠️ 未在当前接口声明') }}
-                  </span>
-                </div>
-                <div class="flex items-center justify-between text-slate-600 dark:text-gray-400">
-                  <span>• Feature Report 0x05 (电量/状态查询通道)</span>
-                  <span class="font-mono" :class="connected ? (lastBatteryDiagnostic?.ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400') : 'text-slate-400 dark:text-gray-500'">
-                    {{ !connected ? '⏳ 待连接' : (lastBatteryDiagnostic?.wiredOnly ? '✔️ 有线模式免轮询 (5B)' : (lastBatteryDiagnostic?.ok ? '✔️ 查询正常' : (lastBatteryDiagnostic ? '⚠️ 读取受限' : '⏳ 检测中'))) }}
-                  </span>
-                </div>
-                <div v-if="connected && deviceInfo?.descriptorSummary" class="text-[11px] font-mono text-slate-500 dark:text-gray-400 pt-1 border-t border-slate-200 dark:border-gray-800/60 break-all">
-                  {{ deviceInfo.descriptorSummary }}
-                </div>
+              <div v-if="connected && deviceInfo?.descriptorSummary" class="text-[11px] font-mono text-slate-500 dark:text-gray-400 pt-1 border-t border-slate-200 dark:border-gray-800/60 break-all">
+                {{ deviceInfo.descriptorSummary }}
               </div>
             </div>
           </div>
 
-          <!-- 卡片 3: 实时上报帧监听检查器 -->
+          <!-- 卡片 2: 实时上报帧监听检查器 -->
           <div class="bg-slate-50 dark:bg-gray-900/60 border border-slate-200 dark:border-gray-800 rounded-2xl p-5 space-y-3 shadow-sm dark:shadow-lg">
             <div class="flex items-center justify-between">
               <div class="flex items-center space-x-2">
@@ -1018,7 +852,7 @@
 
             <div class="bg-slate-900 dark:bg-black/80 rounded-xl p-3 font-mono text-xs text-slate-200 max-h-48 overflow-y-auto space-y-1.5 custom-scroll border border-slate-700 dark:border-gray-800">
               <div v-if="inputReportsList.length === 0" class="text-slate-400 italic py-2">
-                等待键盘中断上报数据（敲击按键或发生电量/模式变动时，键盘将通过 Input Report 推送事件）...
+                等待键盘中断上报数据（敲击功能键或发生状态变动时，键盘将通过 Input Report 推送事件）...
               </div>
               <div v-for="(rep, idx) in inputReportsList" :key="idx" class="flex items-start space-x-2 text-[11px] hover:bg-slate-800/60 p-1 rounded">
                 <span class="text-slate-400 shrink-0">[{{ rep.time }}]</span>

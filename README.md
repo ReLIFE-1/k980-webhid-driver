@@ -39,14 +39,9 @@
   - 集成按键实时击键检测（双主题均标记已测试键位，支持开启「拦截快捷键」防止 `F5`/`Tab`/方向键误触浏览器默认行为，失焦自动释放防卡键）。
   - 内置 Web Audio 击键音效合成与击键计数器。
 
-- **🔋 实时电量监控与多通道诊断 (Power & Battery)**
-  - 基于中颖 `CDrv196::ReadPower` 底层通信，优先捕获 `InputReport` 并自动适配 `FeatureReport 0x05` / 回退 `0x06` 查询电池电量百分比与充放电状态。
-  - 精确识别 **USB 有线供电模式**、**充电状态**（⚡ 正在充电 / 电池已充满 100%）与 **无线放电状态**；当硬件接口拒绝读取时自动提示原因并在连续失败 3 次后暂停轮询，支持一键复制 HID 诊断报告。
-  - 顶部导航栏集成动态电池胶囊；控制面板支持 15 秒自动定时轮询与即时手动刷新。
-
 - **🛡️ HID 接口诊断与实时 Input Report 捕获器**
-  - 展示已授权设备的实际 `HID Collections`（UsagePage、Feature/Input Report 长度），并保留官方 `Cfg.ini KbFw=22` 作为静态基准参考。
-  - 实时中断监听：全局监听键盘硬件上报的 `inputreport` 事件流，直观呈现每帧 Report ID、字节数与 16 进制原始数据。
+  - 展示已授权设备的实际 `HID Collections`（UsagePage、Feature/Input Report 长度），并保留官方 `Cfg.ini KbFw=22` 作为静态基准参考，支持一键复制 HID 诊断信息。
+  - 实时中断监听：监听键盘硬件上报的 `inputreport` 事件流，直观呈现每帧 Report ID、字节数与 16 进制原始数据。
 
 - **📊 硬件报文与通信日志监视器**
   - 实时打印 WebHID 报文数据流（Feature Report 0x05 参数查询、0x06 完整参数配置下发）。
@@ -86,7 +81,7 @@
 | **厂商 ID (VID)** | `0x258A` | SinoWealth 中颖微电子标准外设 VID |
 | **产品 ID (PID)** | `0x0049` | 迈从 (MCHOSE) K980 专属三模键盘 PID |
 | **主控芯片 MCU** | SinoWealth BYK916 | 8051 架构三模键盘协议主控 |
-| **通信接口** | USB HID Feature Report | Report ID `0x06` (1032 字节下发), Report ID `0x05` (查询) |
+| **通信接口** | USB HID Feature Report | Report ID `0x06` (1031 字节双块下发), Report ID `0x05` (参数回读) |
 | **灯光色码定义** | 红: `0`, 绿: `2`, 蓝: `1`, 黄: `4`, 紫: `3`, 青: `5`, 白: `6`, 幻彩: `7` | 适配此 PCB 固件通道映射 |
 
 > [!IMPORTANT]
